@@ -71,8 +71,6 @@ typedef union Packet
 
 typedef struct CommonData
 {
-    int data_socket;
-    struct sockaddr_in data_address;
 } CommonData_t;
 
 extern CommonData_t tftp_common_data;
@@ -81,10 +79,8 @@ extern char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH];
 void init_storage(void);
 
 void fill_request_packet(Packet_t *buffer, TFTPOpcode_t opcode, const char *file_name, TFTPMode_t mode, uint16_t block_size);
-void fill_data_packet(Packet_t *buffer, uint16_t block_number, char *data, size_t data_length, TFTPMode_t mode);
-void fill_ack_packet(Packet_t *buffer, uint16_t block_number);
 
-void transmit_file(FILE *file, int data_socket, struct sockaddr_in peer_address, TFTPMode_t mode, uint16_t block_size);
-void receive_file(FILE *file, int data_socket, struct sockaddr_in peer_address, TFTPMode_t mode, uint16_t block_size);
+void transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, struct sockaddr_in peer_address);
+void receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, struct sockaddr_in peer_address);
 
 #endif

@@ -2,7 +2,6 @@
 
 static void server_cleanup(ServerSideData_t *data)
 {
-    close(tftp_common_data.data_socket);
     close(data->requests_socket);
     free(data);
 }
@@ -117,29 +116,10 @@ static void server_listen_loop(ServerSideData_t *data)
 static void server_init(ServerSideData_t *data)
 {
     init_storage();
-
-    tftp_common_data.data_address.sin_family = AF_INET;
-    tftp_common_data.data_address.sin_addr.s_addr = INADDR_ANY;
-    tftp_common_data.data_socket = socket(AF_INET, SOCK_DGRAM, 0);
-
     data->requests_address.sin_family = AF_INET;
     data->requests_address.sin_addr.s_addr = INADDR_ANY;
     data->requests_address.sin_port = htons(69);
     data->requests_socket = socket(AF_INET, SOCK_DGRAM, 0);
-
-    uint16_t rx_port;
-    int bind_result = -1;
-
-    while (bind_result < 0)
-    {
-        rx_port = random_range(PORT_MIN, PORT_MAX);
-        data->requests_address.sin_port = htons(rx_port);
-        bind_result = bind(data->requests_socket,
-                (struct sockaddr*)&(data->requests_address),
-                sizeof(data->requests_address));
-    }
-
-    printf("Randomly selected data port %u.\n", rx_port);
 }
 
 void server_start(void)
