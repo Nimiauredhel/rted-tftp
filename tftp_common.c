@@ -2,7 +2,7 @@
 
 CommonData_t tftp_common_data;
 
-char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH] =
+const char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH] =
 {
     "netascii",
     "octet"

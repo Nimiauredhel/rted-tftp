@@ -74,7 +74,7 @@ typedef struct CommonData
 } CommonData_t;
 
 extern CommonData_t tftp_common_data;
-extern char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH];
+const extern char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH];
 
 void init_storage(void);
 
