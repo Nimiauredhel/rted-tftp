@@ -25,9 +25,6 @@ static void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *add
     socket_timeout.tv_sec = 1;
     socket_timeout.tv_usec = 0;
 
-    address_ptr->sin_family = AF_INET;
-    address_ptr->sin_addr.s_addr = INADDR_ANY;
-
     *socket_ptr = socket(AF_INET, SOCK_DGRAM, 0);
     // TODO: handle errors here
     setsockopt(*socket_ptr, SOL_SOCKET, SO_RCVTIMEO,  &socket_timeout, sizeof(socket_timeout));
@@ -71,29 +68,29 @@ void transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, struct sock
 {
     bool acknowledged = false;
     uint8_t resend_counter = 0;
-    int block_number = 0;
+    int block_number = 1;
     int bytes_read = block_size;
     int data_socket;
-    struct sockaddr_in local_address;
+    struct sockaddr_in local_address = { .sin_family = AF_INET, .sin_addr.s_addr = INADDR_ANY };
     Packet_t ack_packet;
-    Packet_t *send_buffer = malloc(sizeof(Packet_t) + block_size);
+    Packet_t *data_packet_ptr = malloc(sizeof(Packet_t) + block_size);
     socklen_t peer_address_length = sizeof(peer_address);
 
     tftp_init_bound_data_socket(&data_socket, &local_address);
 
-    send_buffer->data.opcode = TFTP_DATA;
+    data_packet_ptr->data.opcode = TFTP_DATA;
 
     printf("Beginning file transmission.\n");
 
     while (bytes_read == block_size)
     {
         acknowledged = false;
-        send_buffer->data.block_number = block_number;
-        bytes_read = fread(send_buffer->data.data, 1, block_size, file);
+        data_packet_ptr->data.block_number = block_number;
+        bytes_read = fread(data_packet_ptr->data.data, 1, block_size, file);
 
         while (!acknowledged)
         {
-            sendto(data_socket, send_buffer, bytes_read, 0, (struct sockaddr *)&(peer_address), peer_address_length);
+            sendto(data_socket, data_packet_ptr, bytes_read, 0, (struct sockaddr *)&(peer_address), peer_address_length);
             // TODO: handle errors
             recvfrom(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), &peer_address_length);
 
