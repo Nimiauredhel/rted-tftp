@@ -1,18 +1,19 @@
 #include "client.h"
 
-static void client_cleanup(ClientSideData_t *data)
-{
-    free(data);
-}
-
-static void client_init(ClientSideData_t *data)
+static void client_init(void)
 {
     init_storage();
 }
 
-void client_start(void)
+void client_wrq(int argc, char *argv[])
 {
-    ClientSideData_t *data = malloc(sizeof(ClientSideData_t));
-    client_init(data);
-    client_cleanup(data);
+    init_storage();
+}
+void client_rrq(int argc, char *argv[])
+{
+    init_storage();
+}
+void client_drq(int argc, char *argv[])
+{
+    init_storage();
 }

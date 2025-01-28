@@ -1,12 +1,6 @@
 #include "server.h"
 
-static void server_cleanup(ServerSideData_t *data)
-{
-    close(data->requests_socket);
-    free(data);
-}
-
-static void server_process_rrq(ServerSideData_t *data, Packet_t *request, ssize_t request_length)
+static void server_process_rrq(Packet_t *request, ssize_t request_length)
 {
     int contents_index = 0;
     char file_name[TFTP_FILENAME_MAX] = {0};
@@ -61,11 +55,11 @@ static void server_process_rrq(ServerSideData_t *data, Packet_t *request, ssize_
     printf("Requested file found: %s\n", file_name);
 }
 
-static void server_process_wrq(ServerSideData_t *data, Packet_t *request, ssize_t request_length)
+static void server_process_wrq(Packet_t *request, ssize_t request_length)
 {
 }
 
-static void server_listen_loop(ServerSideData_t *data)
+static void server_listen_loop(void)
 {
     ssize_t bytes_received;
     size_t buffer_size = sizeof(Packet_t) + TFTP_FILENAME_MAX;
@@ -79,7 +73,7 @@ static void server_listen_loop(ServerSideData_t *data)
     while(!should_terminate)
     {
         memset(incoming_request, 0, buffer_size);
-        bytes_received = recvfrom(data->requests_socket, incoming_request, buffer_size, 0, (struct sockaddr*)&(client_address), &client_address_length);
+        bytes_received = recvfrom(tftp_common_data.primary_socket, incoming_request, buffer_size, 0, (struct sockaddr*)&(client_address), &client_address_length);
 
         if (should_terminate) break;
 
@@ -94,11 +88,11 @@ static void server_listen_loop(ServerSideData_t *data)
         {
             case TFTP_RRQ:
                 fputs("Received RRQ packet in requests socket.\n", stdout);
-                server_process_rrq(data, incoming_request, bytes_received);
+                server_process_rrq(incoming_request, bytes_received);
                 break;
             case TFTP_WRQ:
                 fputs("Received WRQ packet in requests socket.\n", stdout);
-                server_process_wrq(data, incoming_request, bytes_received);
+                server_process_wrq(incoming_request, bytes_received);
                 break;
             case TFTP_DATA:
                 fputs("Received DATA packet in requests socket.\n", stderr);
@@ -113,19 +107,15 @@ static void server_listen_loop(ServerSideData_t *data)
     }
 }
 
-static void server_init(ServerSideData_t *data)
+static void server_init(void)
 {
     init_storage();
-    data->requests_address.sin_family = AF_INET;
-    data->requests_address.sin_addr.s_addr = INADDR_ANY;
-    data->requests_address.sin_port = htons(69);
-    data->requests_socket = socket(AF_INET, SOCK_DGRAM, 0);
+    tftp_common_data.local_address.sin_port = htons(69);
+    tftp_common_data.primary_socket = socket(AF_INET, SOCK_DGRAM, 0);
 }
 
 void server_start(void)
 {
-    ServerSideData_t *data = malloc(sizeof(ServerSideData_t));
-    server_init(data);
-    server_listen_loop(data);
-    server_cleanup(data);
+    server_init();
+    server_listen_loop();
 }

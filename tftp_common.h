@@ -18,7 +18,8 @@ typedef enum TFTPOpcode
     TFTP_WRQ = 2, // write request
     TFTP_DATA = 3,
     TFTP_ACK = 4,
-    TFTP_ERROR = 5
+    TFTP_ERROR = 5,
+    TFTP_DRQ = 6, // delete request
 } TFTPOpcode_t;
 
 typedef enum TFTPMode
@@ -43,7 +44,7 @@ typedef union Packet
 
     struct
     {
-        uint16_t opcode; // RRQ or WRQ
+        uint16_t opcode; // RRQ, WRQ, or DRQ
         char contents[]; // null-terminated fields: filename, (optional) block size, mode
     } request;
 
@@ -71,10 +72,27 @@ typedef union Packet
 
 typedef struct CommonData
 {
+    /*
+     * every operation mode requires at least one socket.
+     * in server mode this will serve as the passive requests socket.
+     * in any client action (read, write, delete) this will be the socket for that action.
+     */
+    int primary_socket;
+    struct sockaddr_in local_address;
+    /*
+     * every operation mode requires a path input.
+     * in server mode this is the folder to be served to clients.
+     * in any client action this is the file name for that action.
+     */
+    char path[255];
 } CommonData_t;
 
-extern CommonData_t tftp_common_data;
+const extern uint8_t tftp_max_retransmit_count;
+const extern uint32_t tftp_ack_timeout;
+const extern uint32_t tftp_data_timeout;
 const extern char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH];
+
+extern CommonData_t tftp_common_data;
 
 void init_storage(void);
 

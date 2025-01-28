@@ -1,11 +1,22 @@
 #include "tftp_common.h"
 
-CommonData_t tftp_common_data;
+const uint8_t tftp_max_retransmit_count = 5;
+const uint32_t tftp_ack_timeout = 1000000;
+const uint32_t tftp_data_timeout = 1000000;
 
 const char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH] =
 {
     "netascii",
     "octet"
+};
+
+CommonData_t tftp_common_data =
+{
+    .local_address =
+    {
+        .sin_addr = INADDR_ANY,
+        .sin_family = AF_INET,
+    }
 };
 
 static void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr)
@@ -59,6 +70,7 @@ void init_storage(void)
 void transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, struct sockaddr_in peer_address)
 {
     bool acknowledged = false;
+    uint8_t resend_counter = 0;
     int block_number = 0;
     int bytes_read = block_size;
     int data_socket;
@@ -84,6 +96,7 @@ void transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, struct sock
             sendto(data_socket, send_buffer, bytes_read, 0, (struct sockaddr *)&(peer_address), peer_address_length);
             // TODO: handle errors
             recvfrom(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), &peer_address_length);
+
             if (ack_packet.opcode == TFTP_ACK && ack_packet.ack.block_number == block_number)
             {
                 acknowledged = true;
