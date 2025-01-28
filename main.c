@@ -70,8 +70,10 @@ static int8_t get_selection_from_args(int argc, char *argv[])
                 }
                 else
                 {
-                    printf("Missing arguments for requested operation! Usage:\n");
-                    printf(operation_modes[i].usage_format_string, argv[0], operation_modes[i].input_string[i]);
+                    printf("Missing arguments for requested operation!\n Usage:\n   ");
+                    printf(operation_modes[i].usage_format_string, argv[0], operation_modes[i].input_string);
+                    printf("\nTerminating.\n");
+                    exit(EINVAL);
                 }
 
                 break;
