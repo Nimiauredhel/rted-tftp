@@ -68,29 +68,32 @@ void transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, struct sock
 {
     bool acknowledged = false;
     uint8_t resend_counter = 0;
-    int block_number = 1;
-    int bytes_read = block_size;
+    int block_number = 0;
+    int bytes_sent = block_size;
     int data_socket;
     struct sockaddr_in local_address = { .sin_family = AF_INET, .sin_addr.s_addr = INADDR_ANY };
     Packet_t ack_packet;
-    Packet_t *data_packet_ptr = malloc(sizeof(Packet_t) + block_size);
+    Packet_t *data_packet_ptr;
     socklen_t peer_address_length = sizeof(peer_address);
 
     tftp_init_bound_data_socket(&data_socket, &local_address);
 
+    data_packet_ptr = malloc(sizeof(Packet_t) + block_size);
     data_packet_ptr->data.opcode = TFTP_DATA;
 
     printf("Beginning file transmission.\n");
 
-    while (bytes_read == block_size)
+    while (bytes_sent == block_size)
     {
+        block_number++;
+        resend_counter = 0;
         acknowledged = false;
         data_packet_ptr->data.block_number = block_number;
-        bytes_read = fread(data_packet_ptr->data.data, 1, block_size, file);
+        bytes_sent = fread(data_packet_ptr->data.data, 1, block_size, file);
 
         while (!acknowledged)
         {
-            sendto(data_socket, data_packet_ptr, bytes_read, 0, (struct sockaddr *)&(peer_address), peer_address_length);
+            sendto(data_socket, data_packet_ptr, bytes_sent, 0, (struct sockaddr *)&(peer_address), peer_address_length);
             // TODO: handle errors
             recvfrom(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), &peer_address_length);
 
@@ -98,27 +101,78 @@ void transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, struct sock
             {
                 acknowledged = true;
             }
-            else
+            else if (resend_counter < tftp_max_retransmit_count)
             {
+                resend_counter++;
                 printf ("Block #%u still unacknowledged, resending.\n", block_number);
             }
+            else
+            {
+                printf ("Block #%u still unacknowledged, max retransmission limit reached. Aborting.\n", block_number);
+                free(data_packet_ptr);
+                return;
+            }
         }
-
-        if (bytes_read < block_size) break;
-        block_number++;
     }
 
+    free(data_packet_ptr);
     printf("File transmission complete.\n");
 }
 
 void receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, struct sockaddr_in peer_address)
 {
+    bool finished = false;
+    uint8_t resend_counter = 0;
+    int prev_block_number = 0;
+    int next_block_number = 1;
+    int bytes_received = block_size;
     int data_socket;
-    struct sockaddr_in data_address;
-    Packet_t ack_packet;
-    Packet_t *receive_buffer = malloc(block_size);
+    struct sockaddr_in local_address = { .sin_family = AF_INET, .sin_addr.s_addr = INADDR_ANY };
+    Packet_t ack_packet = { .ack.opcode = TFTP_ACK, .ack.block_number = prev_block_number } ;
+    Packet_t *data_packet_ptr;
+    size_t data_packet_size = sizeof(Packet_t) + block_size;
+    socklen_t peer_address_length = sizeof(peer_address);
 
-    tftp_init_bound_data_socket(&data_socket, &data_address);
+    tftp_init_bound_data_socket(&data_socket, &local_address);
 
-    ack_packet.opcode = TFTP_ACK;
+    data_packet_ptr = malloc(data_packet_size);
+
+    printf("Beginning file reception.\n");
+
+    while (!finished)
+    {
+        bytes_received = recvfrom(data_socket, data_packet_ptr, data_packet_size, 0, (struct sockaddr *)&(peer_address), &peer_address_length);
+
+        if (bytes_received > 0 || data_packet_ptr->data.block_number == next_block_number)
+        {
+            if (bytes_received < block_size)
+            {
+                finished = true;
+            }
+            else
+            {
+                resend_counter = 0;
+                prev_block_number++;
+                next_block_number++;
+            }
+
+            fputs(data_packet_ptr->data.data, file);
+        }
+        else if (resend_counter < tftp_max_retransmit_count)
+        {
+            resend_counter++;
+            printf ("Block #%u still not received, resending acknowledgement of block #%u.\n", next_block_number, prev_block_number);
+        }
+        else
+        {
+            printf ("Block #%u still not received, max retransmission limit reached. Aborting.\n", prev_block_number);
+            free(data_packet_ptr);
+            return;
+        }
+
+        sendto(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), peer_address_length);
+    }
+
+    free(data_packet_ptr);
+    printf("File reception complete.\n");
 }
