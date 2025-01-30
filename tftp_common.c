@@ -160,19 +160,16 @@ void receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_soc
     {
         bytes_received = recvfrom(data_socket, data_packet_ptr, full_packet_size, 0, (struct sockaddr *)&(peer_address), &peer_address_length);
 
-        if (bytes_received > 0 || data_packet_ptr->data.block_number == next_block_number)
+        if (bytes_received > 0 && data_packet_ptr->data.block_number == next_block_number)
         {
-
             if (bytes_received < full_packet_size)
             {
                 finished = true;
             }
-            else
-            {
-                resend_counter = 0;
-                prev_block_number++;
-                next_block_number++;
-            }
+
+            resend_counter = 0;
+            prev_block_number++;
+            next_block_number++;
 
             printf ("Block #%u received!\n", prev_block_number);
 
