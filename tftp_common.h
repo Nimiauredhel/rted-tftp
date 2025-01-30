@@ -8,7 +8,7 @@
 #define STORAGE_PATH "./storage/"
 
 #define TFTP_MODES_COUNT 2
-#define TFTP_MODES_STRING_LENGTH 8
+#define TFTP_MODES_STRING_LENGTH 9
 #define TFTP_BLKSIZE_STRING "blksize"
 #define TFTP_FILENAME_MAX 255
 
@@ -98,7 +98,8 @@ void init_storage(void);
 
 void fill_request_packet(Packet_t *buffer, TFTPOpcode_t opcode, const char *file_name, TFTPMode_t mode, uint16_t block_size);
 
-void transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, struct sockaddr_in peer_address);
-void receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, struct sockaddr_in peer_address);
+void transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address);
+void receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address);
+void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr);
 
 #endif
