@@ -7,6 +7,8 @@
 
 #define STORAGE_PATH "./storage/"
 
+#define OPERATION_MODES_COUNT 4
+#define OPERATION_MODES_MAXLENGTH 8
 #define TFTP_MODES_COUNT 2
 #define TFTP_MODES_STRING_LENGTH 9
 #define TFTP_BLKSIZE_STRING "blksize"
@@ -87,19 +89,40 @@ typedef struct CommonData
     char path[255];
 } CommonData_t;
 
+typedef struct OperationMode
+{
+    const uint8_t min_argument_count;
+    const char input_string[OPERATION_MODES_MAXLENGTH];
+    const char description_string[32];
+    const char usage_format_string[32];
+
+} OperationMode_t;
+
+typedef struct OperationData
+{
+    TFTPOpcode_t request_opcode;
+    TFTPMode_t mode;
+    uint16_t blocksize;
+    uint16_t filename_len;
+    int data_socket;
+    struct sockaddr_in local_address;
+    struct sockaddr_in peer_address;
+    socklen_t peer_address_length;
+    char filename[];
+} OperationData_t;
+
 const extern uint8_t tftp_max_retransmit_count;
 const extern uint32_t tftp_ack_timeout;
 const extern uint32_t tftp_data_timeout;
 const extern char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH];
 
+const extern OperationMode_t tftp_operation_modes[];
 extern CommonData_t tftp_common_data;
 
-void init_storage(void);
-
-void fill_request_packet(Packet_t *buffer, TFTPOpcode_t opcode, const char *file_name, TFTPMode_t mode, uint16_t block_size);
-
-void transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address);
-void receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address);
+void tftp_init_storage(void);
+void tftp_transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address);
+void tftp_receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address);
+OperationData_t *tftp_init_operation_data(TFTPOpcode_t operation, char *peer_address_string, char *filename, char *mode_string, char *blocksize_string);
 void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr);
 
 #endif

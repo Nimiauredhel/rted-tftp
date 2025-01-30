@@ -124,7 +124,7 @@ static void server_process_wrq(Packet_t *request, ssize_t request_length, struct
     sendto(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), peer_address_length);
 
     // receive file
-    receive_file(file, TFTP_MODE_NETASCII, 512, data_socket, data_address, peer_address);
+    tftp_receive_file(file, TFTP_MODE_NETASCII, 512, data_socket, data_address, peer_address);
 }
 
 static void server_listen_loop(void)
@@ -194,7 +194,7 @@ static void server_listen_loop(void)
 
 static void server_init(void)
 {
-    init_storage();
+    tftp_init_storage();
     tftp_common_data.local_address.sin_port = htons(69);
     tftp_common_data.primary_socket = socket(AF_INET, SOCK_DGRAM, 0);
 

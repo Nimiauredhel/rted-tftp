@@ -19,6 +19,48 @@ CommonData_t tftp_common_data =
     }
 };
 
+const OperationMode_t tftp_operation_modes[OPERATION_MODES_COUNT] =
+{
+    { 2, "serve", "Serve storage folder to clients", "%s %s" },
+    { 4, "write", "Write named file to server", "%s %s <server ip> <filename>" },
+    { 4, "read", "Read named file from server", "%s %s <server ip> <filename>" },
+    { 4, "delete", "Erase named file from server", "%s %s <server ip> <filename>" },
+};
+
+OperationData_t *tftp_init_operation_data(TFTPOpcode_t operation, char *peer_address_string, char *filename, char *mode_string, char *blocksize_string)
+{
+    uint16_t filename_length = strlen(filename);
+
+    OperationData_t *data = malloc(sizeof(OperationData_t) + filename_length);
+
+    memset(data, 0, sizeof(OperationData_t) + filename_length);
+
+    data->request_opcode = operation;
+    data->mode = TFTP_MODE_NETASCII;
+    data->blocksize = 512;
+    // TODO: ^ actually extract mode and blocksize from input arguments rather than use the defaults ^
+    strcpy(data->filename, filename);
+    data->filename_len = filename_length;
+
+    data->local_address.sin_family = AF_INET;
+    data->local_address.sin_addr.s_addr = INADDR_ANY;
+    data->peer_address.sin_family = AF_INET;
+    data->peer_address.sin_port = htons(69);
+
+    if (0 > inet_pton(AF_INET, peer_address_string, &(data->peer_address.sin_addr)))
+    {
+        perror("Bad peer address");
+        exit(EXIT_FAILURE);
+    }
+
+    data->peer_address_length = sizeof(data->peer_address);
+
+    printf("Initialized operation data: %s | %d | %s\n",
+            data->filename, data->filename_len, inet_ntoa(data->peer_address.sin_addr));
+
+    return data;
+}
+
 void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr)
 {
     struct timeval socket_timeout;
@@ -26,8 +68,18 @@ void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_pt
     socket_timeout.tv_usec = 0;
 
     *socket_ptr = socket(AF_INET, SOCK_DGRAM, 0);
-    // TODO: handle errors here
-    setsockopt(*socket_ptr, SOL_SOCKET, SO_RCVTIMEO,  &socket_timeout, sizeof(socket_timeout));
+
+    if (*socket_ptr < 0)
+    {
+        perror("Failed to create data socket");
+        exit(EXIT_FAILURE);
+    }
+
+    if( 0 > setsockopt(*socket_ptr, SOL_SOCKET, SO_RCVTIMEO,  &socket_timeout, sizeof(socket_timeout)))
+    {
+        perror("Failed to set socket timeout");
+        exit(EXIT_FAILURE);
+    }
 
     uint16_t rx_port;
     int bind_result = -1;
@@ -44,7 +96,7 @@ void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_pt
     printf("Created data socket and randomly bound to port %u.\n", rx_port);
 }
 
-void init_storage(void)
+void tftp_init_storage(void)
 {
     if (mkdir(STORAGE_PATH, 0777) == 0)
     {
@@ -64,7 +116,7 @@ void init_storage(void)
     }
 }
 
-void transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address)
+void tftp_transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address)
 {
     bool acknowledged = false;
     uint8_t resend_counter = 0;
@@ -140,7 +192,7 @@ void transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_so
     printf("File transmission complete.\n");
 }
 
-void receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address)
+void tftp_receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address)
 {
     bool finished = false;
     uint8_t resend_counter = 0;
