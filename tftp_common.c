@@ -36,6 +36,8 @@ OperationData_t *tftp_init_operation_data(TFTPOpcode_t operation, char *peer_add
     memset(data, 0, sizeof(OperationData_t) + filename_length);
 
     data->request_opcode = operation;
+    strncpy(data->request_description, data->request_opcode == TFTP_WRQ ? "WRITE"
+        : data->request_opcode == TFTP_RRQ ? "READ" : "DELETE", 8);
     data->mode = TFTP_MODE_NETASCII;
     data->blocksize = 512;
     // TODO: ^ actually extract mode and blocksize from input arguments rather than use the defaults ^
@@ -116,6 +118,25 @@ void tftp_init_storage(void)
     }
 }
 
+FILE *tftp_acquire_fd(char *path, char *mode)
+{
+    // open file for operation
+    FILE *file = fopen(path, mode);
+
+    if (file == NULL)
+    {
+        perror("Failed to open file");
+        return NULL;
+    }
+    else
+    {
+        printf("Opened/created file: %s.\n", path);
+    }
+
+    return file;
+}
+
+// TODO: make transmit_file return success bool
 void tftp_transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address)
 {
     bool acknowledged = false;
@@ -192,6 +213,7 @@ void tftp_transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int da
     printf("File transmission complete.\n");
 }
 
+// TODO: make receive_file return success bool
 void tftp_receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address)
 {
     bool finished = false;

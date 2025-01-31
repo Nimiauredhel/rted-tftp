@@ -108,6 +108,7 @@ typedef struct OperationData
     struct sockaddr_in local_address;
     struct sockaddr_in peer_address;
     socklen_t peer_address_length;
+    char request_description[8];
     char filename[];
 } OperationData_t;
 
@@ -120,6 +121,7 @@ const extern OperationMode_t tftp_operation_modes[];
 extern CommonData_t tftp_common_data;
 
 void tftp_init_storage(void);
+FILE *tftp_acquire_fd(char *path, char *mode);
 void tftp_transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address);
 void tftp_receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address);
 OperationData_t *tftp_init_operation_data(TFTPOpcode_t operation, char *peer_address_string, char *filename, char *mode_string, char *blocksize_string);
