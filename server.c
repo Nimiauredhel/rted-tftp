@@ -140,6 +140,48 @@ static void server_process_wrq(Packet_t *request, ssize_t request_length, struct
     tftp_receive_file(file, TFTP_MODE_NETASCII, 512, data_socket, data_address, peer_address);
 }
 
+static void server_process_drq(Packet_t *request, ssize_t request_length, struct sockaddr_in peer_address)
+{
+    int data_socket;
+    struct sockaddr_in data_address = { .sin_family = AF_INET, .sin_addr.s_addr = INADDR_ANY };
+    socklen_t peer_address_length = sizeof(peer_address);
+
+    char file_path[TFTP_FILENAME_MAX] = STORAGE_PATH;
+
+    tftp_init_bound_data_socket(&data_socket, &data_address);
+
+    // acknowledge request
+    Packet_t ack_packet = { .ack.opcode = TFTP_ACK, .ack.block_number = 0 };
+    sendto(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), peer_address_length);
+
+    strncat(file_path, request->request.contents, TFTP_FILENAME_MAX - strlen(STORAGE_PATH));
+
+    FILE *file = fopen(file_path, "r");
+
+    if (file == NULL)
+    {
+        // TODO: send ERROR packet
+        printf("File not found: %s\n", file_path);
+        exit(EXIT_FAILURE);
+    }
+    else
+    {
+        printf("File exists and will be deleted: %s\n", file_path);
+        fclose(file);
+    }
+
+    if (0 > remove(file_path))
+    {
+        // TODO: send ERROR packet
+        perror("Failed to delete file");
+        exit(EXIT_FAILURE);
+    }
+
+    // confirm deletion
+    ack_packet.ack.block_number = 1;
+    sendto(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), peer_address_length);
+}
+
 static void server_listen_loop(void)
 {
     ssize_t bytes_received;
@@ -200,6 +242,10 @@ static void server_listen_loop(void)
                 break;
             case TFTP_ERROR:
                 fputs("Received ERROR packet in requests socket.\n", stderr);
+                break;
+            case TFTP_DRQ:
+                fputs("Received DRQ (DELETE) packet in requests socket.\n", stdout);
+                server_process_drq(incoming_request, bytes_received, client_address);
                 break;
         }
     }
