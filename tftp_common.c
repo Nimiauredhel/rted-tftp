@@ -29,7 +29,7 @@ const OperationMode_t tftp_operation_modes[OPERATION_MODES_COUNT] =
 
 OperationData_t *tftp_init_operation_data(TFTPOpcode_t operation, char *peer_address_string, char *filename, char *mode_string, char *blocksize_string)
 {
-    uint16_t filename_length = strlen(filename);
+    uint16_t filename_length = strlen(filename) + 1;
 
     OperationData_t *data = malloc(sizeof(OperationData_t) + filename_length);
 

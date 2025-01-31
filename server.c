@@ -3,14 +3,14 @@
 static void server_process_rrq(Packet_t *request, ssize_t request_length, struct sockaddr_in peer_address)
 {
     int contents_index = 0;
-    char file_name[TFTP_FILENAME_MAX] = {0};
+    char file_path[TFTP_FILENAME_MAX] = STORAGE_PATH;
     char temp_buff[16];
     TFTPMode_t mode = TFTP_MODE_UNDEFINED;
     uint16_t block_size = 0;
 
-    strncpy(file_name, request->request.contents, TFTP_FILENAME_MAX);
+    strncat(file_path, request->request.contents, TFTP_FILENAME_MAX);
 
-    contents_index += strlen(file_name + 1);
+    contents_index += strlen(file_path + 1);
     strncpy(temp_buff, request->request.contents + contents_index, 16);
 
     for (int8_t idx = 0; idx < TFTP_MODES_COUNT; idx++)
@@ -44,15 +44,28 @@ static void server_process_rrq(Packet_t *request, ssize_t request_length, struct
         block_size = TFTP_BLKSIZE_DEFAULT;
     }
 
-    FILE *file = fopen(file_name, "r");
+    FILE *file = fopen(file_path, "r");
 
     if (file == NULL)
     {
-        printf("Requested file not found: %s\n", file_name);
+        printf("Requested file not found: %s\n", file_path);
         return;
     }
 
-    printf("Requested file found: %s\n", file_name);
+    printf("Requested file found: %s\n", file_path);
+
+    int data_socket;
+    struct sockaddr_in data_address = { .sin_family = AF_INET, .sin_addr.s_addr = INADDR_ANY };
+    socklen_t peer_address_length = sizeof(peer_address);
+
+    tftp_init_bound_data_socket(&data_socket, &data_address);
+
+    // acknowledge request
+    Packet_t ack_packet = { .ack.opcode = TFTP_ACK, .ack.block_number = 0 };
+    sendto(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), peer_address_length);
+
+    // send file
+    tftp_transmit_file(file, TFTP_MODE_NETASCII, 512, data_socket, data_address, peer_address);
 }
 
 static void server_process_wrq(Packet_t *request, ssize_t request_length, struct sockaddr_in peer_address)

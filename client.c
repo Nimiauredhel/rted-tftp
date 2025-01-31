@@ -94,6 +94,7 @@ void client_start(OperationData_t *data)
                 if (file == NULL) break;
                 tftp_receive_file(file, data->mode, data->blocksize, data->data_socket, data->local_address, data->peer_address);
                 operation_success = true;
+                break;
             case TFTP_WRQ:
                 file = tftp_acquire_fd(data->filename, "r");
                 if (file == NULL) break;
