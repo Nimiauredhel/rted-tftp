@@ -24,12 +24,12 @@ typedef enum TFTPOpcode
     TFTP_DRQ = 6, // delete request
 } TFTPOpcode_t;
 
-typedef enum TFTPMode
+typedef enum TFTPTransferMode
 {
     TFTP_MODE_UNDEFINED = -1,
     TFTP_MODE_NETASCII = 0,
     TFTP_MODE_OCTET = 1,
-} TFTPMode_t;
+} TFTPTransferMode_t;
 
 typedef enum TFTPBlocksize
 {
@@ -47,7 +47,7 @@ typedef union Packet
     struct
     {
         uint16_t opcode; // RRQ, WRQ, or DRQ
-        char contents[]; // null-terminated fields: filename, (optional) block size, mode
+        char contents[]; // null-terminated fields: file name, transfer mode, (optional) block size
     } request;
 
     struct
@@ -72,23 +72,6 @@ typedef union Packet
 #pragma pack(pop)
 } Packet_t;
 
-typedef struct CommonData
-{
-    /*
-     * every operation mode requires at least one socket.
-     * in server mode this will serve as the passive requests socket.
-     * in any client action (read, write, delete) this will be the socket for that action.
-     */
-    int primary_socket;
-    struct sockaddr_in local_address;
-    /*
-     * every operation mode requires a path input.
-     * in server mode this is the folder to be served to clients.
-     * in any client action this is the file name for that action.
-     */
-    char path[255];
-} CommonData_t;
-
 typedef struct OperationMode
 {
     const uint8_t min_argument_count;
@@ -101,7 +84,7 @@ typedef struct OperationMode
 typedef struct OperationData
 {
     TFTPOpcode_t request_opcode;
-    TFTPMode_t mode;
+    TFTPTransferMode_t mode;
     uint16_t blocksize;
     uint16_t path_len;
     int data_socket;
@@ -112,18 +95,17 @@ typedef struct OperationData
     char path[];
 } OperationData_t;
 
-const extern uint8_t tftp_max_retransmit_count;
-const extern uint32_t tftp_ack_timeout;
-const extern uint32_t tftp_data_timeout;
-const extern char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH];
+extern const uint8_t tftp_max_retransmit_count;
+extern const uint32_t tftp_ack_timeout;
+extern const uint32_t tftp_data_timeout;
+extern const char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH];
 
-const extern OperationMode_t tftp_operation_modes[];
-extern CommonData_t tftp_common_data;
+extern const OperationMode_t tftp_operation_modes[];
 
 void tftp_init_storage(void);
 FILE *tftp_acquire_fd(char *path, char *mode);
-void tftp_transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address);
-void tftp_receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address);
+void tftp_transmit_file(FILE *file, TFTPTransferMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in peer_address);
+void tftp_receive_file(FILE *file, TFTPTransferMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in peer_address);
 OperationData_t *tftp_init_operation_data(TFTPOpcode_t operation, char *peer_address_string, char *filename, char *mode_string, char *blocksize_string);
 void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr);
 

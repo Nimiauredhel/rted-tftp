@@ -5,7 +5,7 @@ static void server_process_rrq(Packet_t *request, ssize_t request_length, struct
     int contents_index = 0;
     char file_path[TFTP_FILENAME_MAX] = STORAGE_PATH;
     char temp_buff[16];
-    TFTPMode_t transfer_mode = TFTP_MODE_UNDEFINED;
+    TFTPTransferMode_t transfer_mode = TFTP_MODE_UNDEFINED;
     uint16_t block_size = 0;
 
     strncat(file_path, request->request.contents, TFTP_FILENAME_MAX);
@@ -17,7 +17,7 @@ static void server_process_rrq(Packet_t *request, ssize_t request_length, struct
     {
         if (strcmp(temp_buff, tftp_mode_strings[idx]) == 0)
         {
-            transfer_mode = (TFTPMode_t)idx;
+            transfer_mode = (TFTPTransferMode_t)idx;
         }
     }
 
@@ -75,7 +75,7 @@ static void server_process_rrq(Packet_t *request, ssize_t request_length, struct
     sendto(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), peer_address_length);
 
     // send file
-    tftp_transmit_file(file, transfer_mode, 512, data_socket, data_address, peer_address);
+    tftp_transmit_file(file, transfer_mode, 512, data_socket, peer_address);
 }
 
 static void server_process_wrq(Packet_t *request, ssize_t request_length, struct sockaddr_in peer_address)
@@ -83,7 +83,7 @@ static void server_process_wrq(Packet_t *request, ssize_t request_length, struct
     int contents_index = 0;
     char file_path[TFTP_FILENAME_MAX] = STORAGE_PATH;
     char temp_buff[16];
-    TFTPMode_t mode = TFTP_MODE_UNDEFINED;
+    TFTPTransferMode_t mode = TFTP_MODE_UNDEFINED;
     uint16_t block_size = 0;
 
     strncat(file_path, request->request.contents, TFTP_FILENAME_MAX - strlen(STORAGE_PATH));
@@ -95,7 +95,7 @@ static void server_process_wrq(Packet_t *request, ssize_t request_length, struct
     {
         if (strcmp(temp_buff, tftp_mode_strings[idx]) == 0)
         {
-            mode = (TFTPMode_t)idx;
+            mode = (TFTPTransferMode_t)idx;
         }
     }
 
@@ -153,10 +153,10 @@ static void server_process_wrq(Packet_t *request, ssize_t request_length, struct
     sendto(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), peer_address_length);
 
     // receive file
-    tftp_receive_file(file, TFTP_MODE_NETASCII, 512, data_socket, data_address, peer_address);
+    tftp_receive_file(file, TFTP_MODE_NETASCII, 512, data_socket, peer_address);
 }
 
-static void server_process_drq(Packet_t *request, ssize_t request_length, struct sockaddr_in peer_address)
+static void server_process_drq(Packet_t *request, struct sockaddr_in peer_address)
 {
     int data_socket;
     struct sockaddr_in data_address = { .sin_family = AF_INET, .sin_addr.s_addr = INADDR_ANY };
@@ -194,20 +194,31 @@ static void server_process_drq(Packet_t *request, ssize_t request_length, struct
     }
 
     // confirm deletion
+    printf("File deleted successfully: %s\n", file_path);
     ack_packet.ack.block_number = 1;
     sendto(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), peer_address_length);
 }
 
 static void server_listen_loop(void)
 {
-    ssize_t bytes_received;
-    size_t buffer_size = sizeof(Packet_t) + TFTP_FILENAME_MAX * 2;
-    Packet_t *incoming_request = malloc(buffer_size);
+    ServerData_t data = {0};
+    Packet_t *request_buffer;
 
-    struct sockaddr_in client_address = { .sin_family = AF_INET };
-    socklen_t client_address_length = sizeof(client_address);
+    data.requests_socket = socket(AF_INET, SOCK_DGRAM, 0);
 
-    int bind_result = bind(tftp_common_data.primary_socket, (struct sockaddr *)&(tftp_common_data.local_address), sizeof(tftp_common_data.local_address));
+    if (data.requests_socket < 0)
+    {
+        perror("Failed to create requests socket");
+        exit(EXIT_FAILURE);
+    }
+
+    data.requests_address.sin_addr.s_addr = INADDR_ANY;
+    data.requests_address.sin_port = htons(69);
+
+    data.client_address.sin_family = AF_INET;
+    data.client_address_length = sizeof(data.client_address);
+
+    int bind_result = bind(data.requests_socket, (struct sockaddr *)&(data.requests_address), sizeof(data.requests_address));
 
     if (bind_result < 0)
     {
@@ -215,40 +226,49 @@ static void server_listen_loop(void)
         exit(EXIT_FAILURE);
     }
 
+    data.buffer_size = sizeof(Packet_t) + TFTP_FILENAME_MAX * 2;
+    request_buffer = malloc(data.buffer_size);
+
+    if (request_buffer == NULL)
+    {
+        perror("Failed to allocate buffer for incoming requests");
+        exit(EXIT_FAILURE);
+    }
+
     while(!should_terminate)
     {
         printf("Awaiting requests.\n");
 
-        memset(incoming_request, 0, buffer_size);
-        bytes_received = recvfrom(tftp_common_data.primary_socket, incoming_request, buffer_size, 0, (struct sockaddr*)&(client_address), &client_address_length);
+        memset(request_buffer, 0, data.buffer_size);
+        data.bytes_received = recvfrom(data.requests_socket, request_buffer, data.buffer_size, 0, (struct sockaddr*)&(data.client_address), &(data.client_address_length));
 
         if (should_terminate) break;
 
-        if(bytes_received < 0)
+        if(data.bytes_received < 0)
         {
             // TODO: extract error handling function plz
             perror("Failed to receive bytes");
             continue;
         }
-        else if (bytes_received == 0)
+        else if (data.bytes_received == 0)
         {
             printf("Received zero bytes.\n");
             continue;
         }
         else
         {
-            printf("Received %lu bytes.\n", bytes_received);
+            printf("Received %lu bytes.\n", data.bytes_received);
         }
 
-        switch (incoming_request->opcode)
+        switch (request_buffer->opcode)
         {
             case TFTP_RRQ:
                 fputs("Received RRQ packet in requests socket.\n", stdout);
-                server_process_rrq(incoming_request, bytes_received, client_address);
+                server_process_rrq(request_buffer, data.bytes_received, data.client_address);
                 break;
             case TFTP_WRQ:
                 fputs("Received WRQ packet in requests socket.\n", stdout);
-                server_process_wrq(incoming_request, bytes_received, client_address);
+                server_process_wrq(request_buffer, data.bytes_received, data.client_address);
                 break;
             case TFTP_DATA:
                 fputs("Received DATA packet in requests socket.\n", stderr);
@@ -261,27 +281,14 @@ static void server_listen_loop(void)
                 break;
             case TFTP_DRQ:
                 fputs("Received DRQ (DELETE) packet in requests socket.\n", stdout);
-                server_process_drq(incoming_request, bytes_received, client_address);
+                server_process_drq(request_buffer, data.client_address);
                 break;
         }
     }
 }
 
-static void server_init(void)
-{
-    tftp_init_storage();
-    tftp_common_data.local_address.sin_port = htons(69);
-    tftp_common_data.primary_socket = socket(AF_INET, SOCK_DGRAM, 0);
-
-    if (tftp_common_data.primary_socket < 0)
-    {
-        perror("Failed to create requests socket");
-        exit(EXIT_FAILURE);
-    }
-}
-
 void server_start(void)
 {
-    server_init();
+    tftp_init_storage();
     server_listen_loop();
 }

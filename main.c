@@ -11,7 +11,7 @@ int main(int argc, char *argv[])
 {
     printf("Welcome to Untitled TFTP App.\n");
 
-    uint8_t selection = get_selection_from_args(argc, argv);
+    int8_t selection = get_selection_from_args(argc, argv);
 
     if (selection < 0)
     {

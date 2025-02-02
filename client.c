@@ -148,13 +148,13 @@ void client_start(OperationData_t *data)
             case TFTP_RRQ:
                 file = tftp_acquire_fd(data->path, "w");
                 if (file == NULL) break;
-                tftp_receive_file(file, data->mode, data->blocksize, data->data_socket, data->local_address, data->peer_address);
+                tftp_receive_file(file, data->mode, data->blocksize, data->data_socket, data->peer_address);
                 operation_success = true;
                 break;
             case TFTP_WRQ:
                 file = tftp_acquire_fd(data->path, "r");
                 if (file == NULL) break;
-                tftp_transmit_file(file, data->mode, data->blocksize, data->data_socket, data->local_address, data->peer_address);
+                tftp_transmit_file(file, data->mode, data->blocksize, data->data_socket, data->peer_address);
                 operation_success = true;
                 break;
             default:

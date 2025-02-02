@@ -10,15 +10,6 @@ const char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH] =
     "octet\0"
 };
 
-CommonData_t tftp_common_data =
-{
-    .local_address =
-    {
-        .sin_addr = INADDR_ANY,
-        .sin_family = AF_INET,
-    }
-};
-
 const OperationMode_t tftp_operation_modes[OPERATION_MODES_COUNT] =
 {
     { 2, "serve", "Serve storage folder to clients", "%s %s" },
@@ -137,7 +128,7 @@ FILE *tftp_acquire_fd(char *path, char *mode)
 }
 
 // TODO: make transmit_file return success bool
-void tftp_transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address)
+void tftp_transmit_file(FILE *file, TFTPTransferMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in peer_address)
 {
     bool acknowledged = false;
     uint8_t resend_counter = 0;
@@ -229,7 +220,7 @@ void tftp_transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int da
 }
 
 // TODO: make receive_file return success bool
-void tftp_receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in local_address, struct sockaddr_in peer_address)
+void tftp_receive_file(FILE *file, TFTPTransferMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in peer_address)
 {
     bool finished = false;
     uint8_t resend_counter = 0;
