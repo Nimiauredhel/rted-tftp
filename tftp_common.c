@@ -38,11 +38,11 @@ OperationData_t *tftp_init_operation_data(TFTPOpcode_t operation, char *peer_add
     data->request_opcode = operation;
     strncpy(data->request_description, data->request_opcode == TFTP_WRQ ? "WRITE"
         : data->request_opcode == TFTP_RRQ ? "READ" : "DELETE", 8);
-    data->mode = TFTP_MODE_NETASCII;
-    data->blocksize = 512;
+    data->mode = TFTP_MODE_OCTET;
+    data->blocksize = 0;
     // TODO: ^ actually extract mode and blocksize from input arguments rather than use the defaults ^
-    strcpy(data->filename, filename);
-    data->filename_len = filename_length;
+    strcpy(data->path, filename);
+    data->path_len = filename_length;
 
     data->local_address.sin_family = AF_INET;
     data->local_address.sin_addr.s_addr = INADDR_ANY;
@@ -58,7 +58,7 @@ OperationData_t *tftp_init_operation_data(TFTPOpcode_t operation, char *peer_add
     data->peer_address_length = sizeof(data->peer_address);
 
     printf("Initialized operation data: %s | %d | %s\n",
-            data->filename, data->filename_len, inet_ntoa(data->peer_address.sin_addr));
+            data->path, data->path_len, inet_ntoa(data->peer_address.sin_addr));
 
     return data;
 }
@@ -142,16 +142,31 @@ void tftp_transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int da
     bool acknowledged = false;
     uint8_t resend_counter = 0;
     int block_number = 0;
-    int full_packet_size = sizeof(Packet_t) + block_size;
-    size_t bytes_read = block_size;
-    int bytes_sent = full_packet_size;
+    int full_packet_size;
+    size_t bytes_read;
+    int bytes_sent;
     Packet_t ack_packet;
     Packet_t *data_packet_ptr;
     socklen_t peer_address_length = sizeof(peer_address);
 
+    if (block_size == 0)
+    {
+        block_size = TFTP_BLKSIZE_DEFAULT;
+        printf("Blocksize unspecified, defaulting to %d.\n", TFTP_BLKSIZE_DEFAULT);
+    }
+    else if (block_size < TFTP_BLKSIZE_MIN || block_size > TFTP_BLKSIZE_MAX)
+    {
+        perror("Invalid block size specified");
+        //free(data_packet_ptr);
+        return;
+    }
+
+    full_packet_size = sizeof(Packet_t) + block_size;
+
     data_packet_ptr = malloc(sizeof(Packet_t) + block_size);
     data_packet_ptr->data.opcode = TFTP_DATA;
 
+    bytes_sent = full_packet_size;
     printf("Beginning file transmission.\n");
 
     while (bytes_sent == full_packet_size)
@@ -162,10 +177,10 @@ void tftp_transmit_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int da
         data_packet_ptr->data.block_number = block_number;
         bytes_read = fread(data_packet_ptr->data.data, 1, block_size, file);
 
+        printf("Read %lu bytes to transmission buffer.\n", bytes_read);
+
         if (bytes_read <= 0)
         {
-            printf("Read %lu bytes to transmission buffer.\n", bytes_read);
-
             if (feof(file) != 0)
             {
                 printf("Sending final block: %u.\n", block_number);
@@ -220,12 +235,25 @@ void tftp_receive_file(FILE *file, TFTPMode_t mode, uint16_t block_size, int dat
     uint8_t resend_counter = 0;
     int prev_block_number = 0;
     int next_block_number = 1;
-    int full_packet_size = block_size + sizeof(Packet_t);
-    int bytes_received = full_packet_size;
+    int full_packet_size;
+    int bytes_received;
     Packet_t ack_packet = { .ack.opcode = TFTP_ACK, .ack.block_number = prev_block_number } ;
     Packet_t *data_packet_ptr;
     socklen_t peer_address_length = sizeof(peer_address);
 
+    if (block_size == 0)
+    {
+        block_size = TFTP_BLKSIZE_DEFAULT;
+        printf("Blocksize unspecified, defaulting to %d.\n", TFTP_BLKSIZE_DEFAULT);
+    }
+    else if (block_size < TFTP_BLKSIZE_MIN || block_size > TFTP_BLKSIZE_MAX)
+    {
+        perror("Invalid block size specified");
+        //free(data_packet_ptr);
+        return;
+    }
+
+    full_packet_size = block_size + sizeof(Packet_t);
     data_packet_ptr = malloc(full_packet_size);
 
     printf("Beginning file reception.\n");

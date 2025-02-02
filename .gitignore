@@ -1,6 +1,7 @@
 .cache/
 storage/
 backup/
+temp/
 todo
 compile_commands.json
 example_file

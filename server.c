@@ -5,7 +5,7 @@ static void server_process_rrq(Packet_t *request, ssize_t request_length, struct
     int contents_index = 0;
     char file_path[TFTP_FILENAME_MAX] = STORAGE_PATH;
     char temp_buff[16];
-    TFTPMode_t mode = TFTP_MODE_UNDEFINED;
+    TFTPMode_t transfer_mode = TFTP_MODE_UNDEFINED;
     uint16_t block_size = 0;
 
     strncat(file_path, request->request.contents, TFTP_FILENAME_MAX);
@@ -17,13 +17,15 @@ static void server_process_rrq(Packet_t *request, ssize_t request_length, struct
     {
         if (strcmp(temp_buff, tftp_mode_strings[idx]) == 0)
         {
-            mode = (TFTPMode_t)idx;
+            transfer_mode = (TFTPMode_t)idx;
         }
     }
 
-    if (mode == TFTP_MODE_UNDEFINED)
+    if (transfer_mode == TFTP_MODE_UNDEFINED)
     {
         // TODO: handle invalid mode string
+        printf("Invalid transfer mode specified, defaulting to Octet.\n");
+        transfer_mode = TFTP_MODE_OCTET;
     }
 
     if ((contents_index + 4) < request_length)
@@ -39,9 +41,16 @@ static void server_process_rrq(Packet_t *request, ssize_t request_length, struct
         }
     }
 
-    if (block_size < TFTP_BLKSIZE_MIN || block_size > TFTP_BLKSIZE_MAX)
+    if (block_size == 0)
     {
+        printf("Block size unspecified, defaulting to %d.\n", TFTP_BLKSIZE_DEFAULT);
         block_size = TFTP_BLKSIZE_DEFAULT;
+    }
+    else if (block_size < TFTP_BLKSIZE_MIN || block_size > TFTP_BLKSIZE_MAX)
+    {
+        printf("Requested block size not supported, aborting.\n");
+        // TODO: send error packet
+        return;
     }
 
     FILE *file = fopen(file_path, "r");
@@ -49,6 +58,7 @@ static void server_process_rrq(Packet_t *request, ssize_t request_length, struct
     if (file == NULL)
     {
         printf("Requested file not found: %s\n", file_path);
+        // TODO: send error packet
         return;
     }
 
@@ -65,7 +75,7 @@ static void server_process_rrq(Packet_t *request, ssize_t request_length, struct
     sendto(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), peer_address_length);
 
     // send file
-    tftp_transmit_file(file, TFTP_MODE_NETASCII, 512, data_socket, data_address, peer_address);
+    tftp_transmit_file(file, transfer_mode, 512, data_socket, data_address, peer_address);
 }
 
 static void server_process_wrq(Packet_t *request, ssize_t request_length, struct sockaddr_in peer_address)
@@ -125,6 +135,12 @@ static void server_process_wrq(Packet_t *request, ssize_t request_length, struct
     }
 
     file = fopen(file_path, "w");
+
+    if (file == NULL)
+    {
+        perror("Failed to open file for writing");
+        return;
+    }
 
     int data_socket;
     struct sockaddr_in data_address = { .sin_family = AF_INET, .sin_addr.s_addr = INADDR_ANY };
@@ -199,10 +215,10 @@ static void server_listen_loop(void)
         exit(EXIT_FAILURE);
     }
 
-    printf("Awaiting requests.\n");
-
     while(!should_terminate)
     {
+        printf("Awaiting requests.\n");
+
         memset(incoming_request, 0, buffer_size);
         bytes_received = recvfrom(tftp_common_data.primary_socket, incoming_request, buffer_size, 0, (struct sockaddr*)&(client_address), &client_address_length);
 

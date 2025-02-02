@@ -103,13 +103,13 @@ typedef struct OperationData
     TFTPOpcode_t request_opcode;
     TFTPMode_t mode;
     uint16_t blocksize;
-    uint16_t filename_len;
+    uint16_t path_len;
     int data_socket;
     struct sockaddr_in local_address;
     struct sockaddr_in peer_address;
     socklen_t peer_address_length;
     char request_description[8];
-    char filename[];
+    char path[];
 } OperationData_t;
 
 const extern uint8_t tftp_max_retransmit_count;

@@ -25,16 +25,72 @@ static bool await_acknowledgement(OperationData_t *data, uint16_t block_number)
 
 static bool send_request_packet(OperationData_t *data)
 {
-    size_t contents_size = data->filename_len + 8 + 2;
+    static const uint8_t blocksize_blksize_str_len = 7;
+    static const uint8_t blocksize_octets_str_len = 5;
+    static const char divider = '\0'; // standard specifies 0-terminated strings, only change for debugging
+
+    uint16_t contents_idx = 0;
+    char *filename_in_path;
+    size_t filename_len;
+    size_t transfer_mode_len = strlen(tftp_mode_strings[data->mode]);
+    char blocksize_octets_str[6] = {0};
+
+    filename_in_path = strrchr(data->path, '/');
+
+    if (filename_in_path == NULL)
+    {
+        filename_in_path = data->path;
+        filename_len = data->path_len;
+    }
+    else
+    {
+        filename_len = strlen(filename_in_path);
+    }
+
+    if (data->blocksize > 0 && data->blocksize != TFTP_BLKSIZE_DEFAULT)
+    {
+        sprintf(blocksize_octets_str, "%05u", data->blocksize);
+    }
+
+    size_t contents_size = filename_len + 1 // space for filename + terminator
+        + transfer_mode_len + 1 // space for transfer mode + terminator
+        + (data->blocksize > 0 ? blocksize_blksize_str_len + blocksize_octets_str_len + 2 : 0); // optional space for blksize & octet fields and terminators
     Packet_t *request_packet_ptr = malloc(sizeof(Packet_t) + contents_size);
 
+    // clearing packet memory to zero
     request_packet_ptr->request.opcode = data->request_opcode;
-    memset(request_packet_ptr->request.contents, 0, contents_size);
-    memcpy(request_packet_ptr->request.contents, data->filename, data->filename_len); 
-    memset(request_packet_ptr->request.contents + data->filename_len, 0, 1); 
-    memcpy(request_packet_ptr->request.contents + data->filename_len + 1, tftp_mode_strings[0], strlen(tftp_mode_strings[0])); 
+    memset(request_packet_ptr->request.contents, divider, contents_size);
 
-    printf("Sending %s request. Contents:\n%s\n", data->request_description, request_packet_ptr->request.contents);
+    // writing filename + terminating 0
+    memcpy(request_packet_ptr->request.contents, filename_in_path, filename_len); 
+    contents_idx += filename_len;
+    memset(request_packet_ptr->request.contents + contents_idx, divider, 1); 
+    contents_idx++;
+
+    // writing transfer mode + terminating 0
+    memcpy(request_packet_ptr->request.contents + contents_idx, tftp_mode_strings[data->mode], transfer_mode_len); 
+    contents_idx += transfer_mode_len;
+    memset(request_packet_ptr->request.contents + contents_idx, divider, 1); 
+
+    // if custom blocksize specified, we must add those fields as well
+    if (data->blocksize > 0)
+    {
+        contents_idx++;
+        // identifying "blksize" string field + terminator
+        memcpy(request_packet_ptr->request.contents + contents_idx, TFTP_BLKSIZE_STRING, blocksize_blksize_str_len); 
+        contents_idx += blocksize_blksize_str_len;
+        memset(request_packet_ptr->request.contents + contents_idx, divider, 1); 
+        contents_idx++;
+        // ascii representation of the requested blocksize + terminator
+        memcpy(request_packet_ptr->request.contents + contents_idx, blocksize_octets_str, blocksize_octets_str_len); 
+        contents_idx += blocksize_octets_str_len;
+        memset(request_packet_ptr->request.contents + contents_idx, divider, 1); 
+    }
+
+    printf("Sending %s request. Contents:\n", data->request_description);
+    fwrite(request_packet_ptr->request.contents, sizeof(char), contents_size, stdout);
+    printf("\n");
+
     ssize_t bytes_sent = sendto(data->data_socket, request_packet_ptr, sizeof(Packet_t) + contents_size, 0, (struct sockaddr *)&(data->peer_address), data->peer_address_length);
 
     if (bytes_sent <= 0)
@@ -90,13 +146,13 @@ void client_start(OperationData_t *data)
         switch (data->request_opcode)
         {
             case TFTP_RRQ:
-                file = tftp_acquire_fd(data->filename, "w");
+                file = tftp_acquire_fd(data->path, "w");
                 if (file == NULL) break;
                 tftp_receive_file(file, data->mode, data->blocksize, data->data_socket, data->local_address, data->peer_address);
                 operation_success = true;
                 break;
             case TFTP_WRQ:
-                file = tftp_acquire_fd(data->filename, "r");
+                file = tftp_acquire_fd(data->path, "r");
                 if (file == NULL) break;
                 tftp_transmit_file(file, data->mode, data->blocksize, data->data_socket, data->local_address, data->peer_address);
                 operation_success = true;
