@@ -1,5 +1,7 @@
 .cache/
 storage/
+backup/
+todo
 compile_commands.json
 example_file
 
