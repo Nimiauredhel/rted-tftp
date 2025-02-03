@@ -112,13 +112,22 @@ void tftp_transmit_file(FILE *file, TFTPTransferMode_t mode, uint16_t block_size
 {
     bool acknowledged = false;
     uint8_t resend_counter = 0;
-    int block_number = 0;
-    int full_packet_size;
-    size_t bytes_read;
-    int bytes_sent;
-    Packet_t ack_packet;
+    uint8_t incoming_packet_max_size = sizeof(Packet_t) + 32;
+    uint16_t data_packet_max_size;
+    uint16_t block_number = 0;
+    uint16_t total_block_count;
+    int16_t bytes_received = 0;
+    int32_t bytes_sent = 0;
+    int32_t file_bytes_read = 0;
+    uint64_t total_file_size;
+    uint64_t total_file_bytes_sent = 0;
+    Packet_t *incoming_packet_ptr;
     Packet_t *data_packet_ptr;
     socklen_t peer_address_length = sizeof(peer_address);
+
+    fseek(file, 0L, SEEK_END);
+    total_file_size = ftell(file);
+    rewind(file);
 
     if (block_size == 0)
     {
@@ -132,70 +141,108 @@ void tftp_transmit_file(FILE *file, TFTPTransferMode_t mode, uint16_t block_size
         return;
     }
 
-    full_packet_size = sizeof(Packet_t) + block_size;
+    total_block_count = (total_file_size / block_size) + 1;
 
-    data_packet_ptr = malloc(sizeof(Packet_t) + block_size);
+    data_packet_max_size = sizeof(Packet_t) + block_size;
+
+    incoming_packet_ptr = malloc(incoming_packet_max_size);
+    data_packet_ptr = malloc(data_packet_max_size);
     data_packet_ptr->data.opcode = TFTP_DATA;
 
-    bytes_sent = full_packet_size;
-    printf("Beginning file transmission.\n");
+    bytes_sent = data_packet_max_size;
+    printf("Beginning transmission of file with total size of %lu bytes, in %u blocks.\n", total_file_size, total_block_count);
 
-    while (bytes_sent == full_packet_size)
+    while (bytes_sent == data_packet_max_size)
     {
         block_number++;
         resend_counter = 0;
         acknowledged = false;
         data_packet_ptr->data.block_number = block_number;
-        bytes_read = fread(data_packet_ptr->data.data, 1, block_size, file);
+        file_bytes_read = fread(data_packet_ptr->data.data, 1, block_size, file);
 
-        printf("Read %lu bytes to transmission buffer.\n", bytes_read);
+        printf("Read %d bytes to transmission buffer.\n", file_bytes_read);
 
-        if (bytes_read <= 0)
+        if (file_bytes_read <= 0)
         {
             if (feof(file) != 0)
             {
-                printf("Sending final block: %u.\n", block_number);
-                bytes_read = 0;
+                printf("Sending final block: %u/%u.\n", block_number, total_block_count);
+                file_bytes_read = 0;
             }
             else
             {
                 perror("Failed to read from file");
                 free(data_packet_ptr);
+                free(incoming_packet_ptr);
+                close(data_socket);
                 return;
             }
         }
-        else if (bytes_read < block_size)
+        else if (file_bytes_read < block_size)
         {
-            printf("Sending final block: %u.\n", block_number);
+            printf("Sending final block: %u/%u.\n", block_number, total_block_count);
         }
 
-        while (!acknowledged)
+        while (resend_counter < tftp_max_retransmit_count)
         {
-            bytes_sent = sendto(data_socket, data_packet_ptr, sizeof(Packet_t) + bytes_read, 0, (struct sockaddr *)&(peer_address), peer_address_length);
-            printf("Sent %d bytes of block %d.\n", bytes_sent, block_number);
-            // TODO: handle errors
-            recvfrom(data_socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)&(peer_address), &peer_address_length);
+            bytes_sent = sendto(data_socket, data_packet_ptr, sizeof(Packet_t) + file_bytes_read, 0, (struct sockaddr *)&(peer_address), peer_address_length);
 
-            if (ack_packet.opcode == TFTP_ACK && ack_packet.ack.block_number == block_number)
+            if (bytes_sent < 0)
+            {
+                perror("Failed to send packet");
+                free(data_packet_ptr);
+                free(incoming_packet_ptr);
+                close(data_socket);
+                return;
+            }
+
+            if (resend_counter == 0)
+            {
+                total_file_bytes_sent += file_bytes_read;
+            }
+
+            printf("Sent %lu/%lu bytes of block %u/%u.\n", total_file_bytes_sent, total_file_size, block_number, total_block_count);
+            bytes_received = recvfrom(data_socket, incoming_packet_ptr, incoming_packet_max_size, 0, (struct sockaddr *)&(peer_address), &peer_address_length);
+
+            if (bytes_received < 0)
+            {
+                if (errno == ETIMEDOUT)
+                {
+                    printf("Socket timed out.\n");
+                }
+                else
+                {
+                    perror("Failed to receive packet");
+                    free(data_packet_ptr);
+                    free(incoming_packet_ptr);
+                    close(data_socket);
+                    return;
+                }
+            }
+            else if (incoming_packet_ptr->opcode == TFTP_ACK && incoming_packet_ptr->ack.block_number == block_number)
             {
                 acknowledged = true;
                 printf ("Block #%u acknowledged!\n", block_number);
+                break;
             }
-            else if (resend_counter < tftp_max_retransmit_count)
+
+            if (resend_counter > tftp_max_retransmit_count)
             {
-                resend_counter++;
-                printf ("Block #%u still unacknowledged, resending.\n", block_number);
-            }
-            else
-            {
-                printf ("Block #%u still unacknowledged, max retransmission limit reached. Aborting.\n", block_number);
+                printf ("Block #%u unacknowledged and retry limit reached. Aborting.\n", block_number);
                 free(data_packet_ptr);
+                free(incoming_packet_ptr);
+                close(data_socket);
                 return;
             }
+
+            resend_counter++;
+            printf ("Block #%u still unacknowledged, resending (attempt #%d).\n", block_number, resend_counter);
         }
     }
 
     free(data_packet_ptr);
+    free(incoming_packet_ptr);
+    close(data_socket);
     printf("File transmission complete.\n");
 }
 

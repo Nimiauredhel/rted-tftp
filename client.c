@@ -3,31 +3,49 @@
 static bool await_acknowledgement(OperationData_t *data, uint16_t block_number)
 {
     uint8_t retry_counter = 0;
-    Packet_t ack_packet;
+    size_t max_packet_size = sizeof(Packet_t) + 32;
     ssize_t bytes_received = 0;
 
-    while (bytes_received <= 0)
+    // dynamically allocating the packet to allow extra space for error packet message field
+    Packet_t *incoming_packet = malloc(max_packet_size);
+
+    while (retry_counter < tftp_max_retransmit_count)
     {
         retry_counter++;
-        bytes_received = recvfrom(data->data_socket, &ack_packet, sizeof(Packet_t), 0, (struct sockaddr *)&(data->peer_address), &(data->peer_address_length));
-        if (retry_counter > tftp_max_retransmit_count) break;
+        printf("Awaiting ACK from server (attempt #%d).\n", retry_counter);
+        bytes_received = recvfrom(data->data_socket, incoming_packet, max_packet_size, 0, (struct sockaddr *)&(data->peer_address), &(data->peer_address_length));
+
+        if (bytes_received > 0)
+        {
+            if (incoming_packet->opcode == TFTP_ACK && incoming_packet->ack.block_number == block_number)
+            {
+                free(incoming_packet);
+                return true;
+            }
+            else if (incoming_packet->opcode == TFTP_ERROR)
+            {
+                printf("Received error message (code %u) from server with message: %s\n", incoming_packet->error.error_code, incoming_packet->error.error_message);
+                printf("Aborting.\n");
+                free(incoming_packet);
+                return false;
+            }
+            else
+            {
+                printf("Received packet with opcode %d, expected %d (ACK) or %d(ERROR)!\n", incoming_packet->opcode, TFTP_ACK, TFTP_ERROR);
+            }
+        }
     }
 
-    if (bytes_received > 0 && ack_packet.ack.opcode == TFTP_ACK && ack_packet.ack.block_number == block_number)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
+    free(incoming_packet);
+    printf("ACK reception retry limit (%u) reached.\n", tftp_max_retransmit_count);
+
+    return false;
 }
 
 static bool send_request_packet(OperationData_t *data)
 {
     static const uint8_t blocksize_blksize_str_len = 7;
     static const uint8_t blocksize_octets_str_len = 5;
-    static const char divider = '\0'; // standard specifies 0-terminated strings, only change for debugging
 
     uint16_t contents_idx = 0;
     char *filename_in_path;
@@ -152,6 +170,8 @@ void client_start(OperationData_t *data)
 
     if (data->request_opcode == TFTP_DRQ)
     {
+        printf("Awaiting final confirmation of file deletion.\n");
+
         if(await_acknowledgement(data, 1))
         {
             printf("Deletion confirmed.\n");
