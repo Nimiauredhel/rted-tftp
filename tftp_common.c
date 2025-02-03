@@ -4,10 +4,10 @@ const uint8_t tftp_max_retransmit_count = 5;
 const uint32_t tftp_ack_timeout = 1000000;
 const uint32_t tftp_data_timeout = 1000000;
 
-const char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH] =
+const char *tftp_mode_strings[TFTP_MODES_COUNT] =
 {
-    "netascii\0",
-    "octet\0"
+    "octet",
+    "netascii"
 };
 
 const OperationMode_t tftp_operation_modes[OPERATION_MODES_COUNT] =
@@ -87,26 +87,6 @@ void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_pt
     }
 
     printf("Created data socket and randomly bound to port %u.\n", rx_port);
-}
-
-void tftp_init_storage(void)
-{
-    if (mkdir(STORAGE_PATH, 0777) == 0)
-    {
-        printf("Initialized storage directory at path '%s'.\n", STORAGE_PATH);
-    }
-    else
-    {
-        if (errno == EEXIST)
-        {
-            printf("Existing storage directory detected at path '%s'.\n", STORAGE_PATH);
-        }
-        else
-        {
-            perror("Error creating/finding storage directory");
-            exit(EXIT_FAILURE);
-        }
-    }
 }
 
 FILE *tftp_acquire_fd(char *path, char *mode)
@@ -217,6 +197,36 @@ void tftp_transmit_file(FILE *file, TFTPTransferMode_t mode, uint16_t block_size
 
     free(data_packet_ptr);
     printf("File transmission complete.\n");
+}
+
+void tftp_send_error(TFTPErrorCode_t error_code, char *error_message, char *error_item, int data_socket, struct sockaddr_in peer_address, socklen_t peer_address_length)
+{
+    size_t error_message_len = (error_message == NULL ? 0 : strlen(error_message) + (error_item == NULL ? 0 : strlen(error_item)));
+    Packet_t *error_packet;
+
+    size_t packet_size = sizeof(Packet_t) + error_message_len + 1;
+    error_packet = malloc(packet_size);
+    error_packet->opcode = TFTP_ERROR;
+    error_packet->error.error_code = error_code;
+
+    if (error_message != NULL)
+    {
+        strcpy(error_packet->error.error_message, error_message);
+    }
+
+    if (error_item != NULL)
+    {
+        strcat(error_packet->error.error_message, error_item);
+    }
+
+    printf("Sending error packet with code %d, message: %s\n", error_packet->error.error_code, error_packet->error.error_message);
+
+    ssize_t bytes_sent = sendto(data_socket, error_packet, packet_size, 0, (struct sockaddr *)&(peer_address), peer_address_length);
+
+    if (bytes_sent <= 0)
+    {
+        perror("Failed to send error");
+    }
 }
 
 // TODO: make receive_file return success bool

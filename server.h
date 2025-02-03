@@ -15,8 +15,6 @@ typedef struct ServerData
     size_t buffer_size;
 } ServerData_t;
 
-
-
 void server_start(void);
 
 #endif

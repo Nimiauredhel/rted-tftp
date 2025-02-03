@@ -32,7 +32,9 @@ static bool send_request_packet(OperationData_t *data)
     uint16_t contents_idx = 0;
     char *filename_in_path;
     size_t filename_len;
-    size_t transfer_mode_len = strlen(tftp_mode_strings[data->mode]);
+    size_t contents_size;
+    size_t full_packet_size;
+    size_t transfer_mode_len;
     char blocksize_octets_str[6] = {0};
 
     filename_in_path = strrchr(data->path, '/');
@@ -47,44 +49,64 @@ static bool send_request_packet(OperationData_t *data)
         filename_len = strlen(filename_in_path);
     }
 
-    if (data->blocksize > 0 && data->blocksize != TFTP_BLKSIZE_DEFAULT)
+    // the minimal (DRQ) contents size consists of a filename field + terminator
+    contents_size = filename_len + 1;
+
+    // if this is not a delete request, additional fields must be taken into account
+    if (data->request_opcode != TFTP_DRQ)
     {
-        sprintf(blocksize_octets_str, "%05u", data->blocksize);
+        if (data->mode < 0)
+        {
+            perror("Invalid transfer mode");
+            exit(EXIT_FAILURE);
+        }
+
+         transfer_mode_len = data->request_opcode == TFTP_DRQ ? 0 : strlen(tftp_mode_strings[data->mode]);
+
+        if (data->blocksize > 0 && data->blocksize != TFTP_BLKSIZE_DEFAULT)
+        {
+            sprintf(blocksize_octets_str, "%05u", data->blocksize);
+        }
+
+        // calculating required space for the additional data fields
+        contents_size +=
+            // space for transfer mode + terminator
+            + transfer_mode_len + 1 
+            // optional space for blksize & octet fields + terminators
+            + (data->blocksize > 0 ? blocksize_blksize_str_len + blocksize_octets_str_len + 2 : 0);
     }
 
-    size_t contents_size = filename_len + 1 // space for filename + terminator
-        + transfer_mode_len + 1 // space for transfer mode + terminator
-        + (data->blocksize > 0 ? blocksize_blksize_str_len + blocksize_octets_str_len + 2 : 0); // optional space for blksize & octet fields and terminators
-    Packet_t *request_packet_ptr = malloc(sizeof(Packet_t) + contents_size);
+    // summing up the packet size
+    full_packet_size = sizeof(Packet_t) + contents_size;
+    // actually allocating for the packet
+    Packet_t *request_packet_ptr = malloc(full_packet_size);
 
-    // clearing packet memory to zero
+    // zeroing packet memory and setting the opcode field
+    memset(request_packet_ptr, 0, full_packet_size);
     request_packet_ptr->request.opcode = data->request_opcode;
-    memset(request_packet_ptr->request.contents, divider, contents_size);
 
     // writing filename + terminating 0
     memcpy(request_packet_ptr->request.contents, filename_in_path, filename_len); 
     contents_idx += filename_len;
-    memset(request_packet_ptr->request.contents + contents_idx, divider, 1); 
-    contents_idx++;
 
-    // writing transfer mode + terminating 0
-    memcpy(request_packet_ptr->request.contents + contents_idx, tftp_mode_strings[data->mode], transfer_mode_len); 
-    contents_idx += transfer_mode_len;
-    memset(request_packet_ptr->request.contents + contents_idx, divider, 1); 
-
-    // if custom blocksize specified, we must add those fields as well
-    if (data->blocksize > 0)
+    // if this is a delete request, no additional fields are required
+    if (data->request_opcode != TFTP_DRQ)
     {
-        contents_idx++;
-        // identifying "blksize" string field + terminator
-        memcpy(request_packet_ptr->request.contents + contents_idx, TFTP_BLKSIZE_STRING, blocksize_blksize_str_len); 
-        contents_idx += blocksize_blksize_str_len;
-        memset(request_packet_ptr->request.contents + contents_idx, divider, 1); 
-        contents_idx++;
-        // ascii representation of the requested blocksize + terminator
-        memcpy(request_packet_ptr->request.contents + contents_idx, blocksize_octets_str, blocksize_octets_str_len); 
-        contents_idx += blocksize_octets_str_len;
-        memset(request_packet_ptr->request.contents + contents_idx, divider, 1); 
+        // writing transfer mode + terminating 0
+        memcpy(request_packet_ptr->request.contents + contents_idx, tftp_mode_strings[data->mode], transfer_mode_len); 
+        contents_idx += transfer_mode_len;
+
+        // if custom blocksize specified, we must add those fields as well
+        if (data->blocksize > 0)
+        {
+            contents_idx++;
+            // identifying "blksize" string field + terminator
+            memcpy(request_packet_ptr->request.contents + contents_idx, TFTP_BLKSIZE_STRING, blocksize_blksize_str_len); 
+            contents_idx += blocksize_blksize_str_len;
+            // ascii representation of the requested blocksize + terminator
+            memcpy(request_packet_ptr->request.contents + contents_idx, blocksize_octets_str, blocksize_octets_str_len); 
+            contents_idx += blocksize_octets_str_len;
+        }
     }
 
     printf("Sending %s request. Contents:\n", data->request_description);

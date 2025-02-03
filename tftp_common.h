@@ -10,26 +10,38 @@
 #define OPERATION_MODES_COUNT 4
 #define OPERATION_MODES_MAXLENGTH 8
 #define TFTP_MODES_COUNT 2
-#define TFTP_MODES_STRING_LENGTH 9
 #define TFTP_BLKSIZE_STRING "blksize"
 #define TFTP_FILENAME_MAX 255
 
 typedef enum TFTPOpcode
 {
+    TFTP_NONE = 0, // none, likely erroneous
     TFTP_RRQ = 1, // read request
     TFTP_WRQ = 2, // write request
-    TFTP_DATA = 3,
-    TFTP_ACK = 4,
-    TFTP_ERROR = 5,
+    TFTP_DATA = 3, // data packet
+    TFTP_ACK = 4, // acknowledgement packet
+    TFTP_ERROR = 5, // error packet
     TFTP_DRQ = 6, // delete request
 } TFTPOpcode_t;
 
 typedef enum TFTPTransferMode
 {
-    TFTP_MODE_UNDEFINED = -1,
-    TFTP_MODE_NETASCII = 0,
-    TFTP_MODE_OCTET = 1,
+    TFTP_MODE_UNSPECIFIED = -1,
+    TFTP_MODE_OCTET = 0,
+    TFTP_MODE_NETASCII = 1,
 } TFTPTransferMode_t;
+
+typedef enum TFTPErrorCode
+{
+    TFTP_ERROR_UNDEFINED = 0,
+    TFTP_ERROR_FILE_NOT_FOUND = 1,
+    TFTP_ERROR_ACCESS_VIOLATION = 2,
+    TFTP_ERROR_OUT_OF_SPACE = 3,
+    TFTP_ERROR_ILLEGAL_OPERATION = 4,
+    TFTP_ERROR_UNKNOWN_TRANSFER = 5,
+    TFTP_ERROR_FILE_EXISTS = 6,
+    TFTP_ERROR_UNKNOWN_USER = 7,
+} TFTPErrorCode_t;
 
 typedef enum TFTPBlocksize
 {
@@ -98,14 +110,14 @@ typedef struct OperationData
 extern const uint8_t tftp_max_retransmit_count;
 extern const uint32_t tftp_ack_timeout;
 extern const uint32_t tftp_data_timeout;
-extern const char tftp_mode_strings[TFTP_MODES_COUNT][TFTP_MODES_STRING_LENGTH];
+extern const char *tftp_mode_strings[TFTP_MODES_COUNT];
 
 extern const OperationMode_t tftp_operation_modes[];
 
-void tftp_init_storage(void);
 FILE *tftp_acquire_fd(char *path, char *mode);
 void tftp_transmit_file(FILE *file, TFTPTransferMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in peer_address);
 void tftp_receive_file(FILE *file, TFTPTransferMode_t mode, uint16_t block_size, int data_socket, struct sockaddr_in peer_address);
+void tftp_send_error(TFTPErrorCode_t error_code, char *error_message, char *error_item, int data_socket, struct sockaddr_in peer_address, socklen_t peer_address_length);
 OperationData_t *tftp_init_operation_data(TFTPOpcode_t operation, char *peer_address_string, char *filename, char *mode_string, char *blocksize_string);
 void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr);
 
