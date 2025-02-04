@@ -5,6 +5,6 @@
 #include "networking_common.h"
 #include "tftp_common.h"
 
-void client_start(OperationData_t *data);
+bool client_start_operation(OperationData_t *op_data);
 
 #endif

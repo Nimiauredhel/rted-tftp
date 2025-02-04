@@ -5,7 +5,7 @@
 #include "networking_common.h"
 #include "tftp_common.h"
 
-typedef struct ServerData
+typedef struct ServerListenerData
 {
     int requests_socket;
     struct sockaddr_in requests_address;
@@ -13,7 +13,8 @@ typedef struct ServerData
     socklen_t client_address_length;
     ssize_t bytes_received;
     size_t buffer_size;
-} ServerData_t;
+    Packet_t *request_buffer;
+} ServerListenerData_t;
 
 void server_start(void);
 
