@@ -28,7 +28,13 @@ int main(int argc, char *argv[])
         struct in_addr peer_address_bin;
         OperationData_t *data;
 
-        parse_address(argv[3], &peer_address_bin);
+        if (!parse_address(argv[2], &peer_address_bin))
+        {
+            fprintf(stderr, "Failed to parse peer address (%s): %s\n", argv[3], strerror(errno));
+            return EXIT_FAILURE;
+        }
+
+        printf("Parsed peer address (%s).\n", argv[2]);
 
         switch (selection)
         {
