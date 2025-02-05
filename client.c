@@ -134,7 +134,10 @@ bool client_start_operation(OperationData_t *op_data)
         return operation_outcome;
     }
 
-    if (false == tftp_await_acknowledgement(0, op_data))
+    // WRITE and DELETE operations must await an ACK response here;
+    // READ operations skip ahead and await the first DATA packet
+    if (op_data->operation_id != TFTP_OPERATION_RECEIVE
+        && tftp_await_acknowledgement(0, op_data) == false)
     {
         printf("%s request unacknowledged.\n", op_data->request_description);
         return operation_outcome;
