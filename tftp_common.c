@@ -64,13 +64,17 @@ bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *tr
     if (operation_data->block_size == 0)
     {
         operation_data->block_size = TFTP_BLKSIZE_DEFAULT;
-        printf("Blocksize unspecified, defaulting to %d.\n", TFTP_BLKSIZE_DEFAULT);
+        printf("Block size unspecified, defaulting to %d bytes.\n", TFTP_BLKSIZE_DEFAULT);
     }
     else if (operation_data->block_size < TFTP_BLKSIZE_MIN || operation_data->block_size > TFTP_BLKSIZE_MAX)
     {
         printf("Invalid block size specified");
         tftp_send_error(TFTP_ERROR_ILLEGAL_OPERATION, "Invalid block size specified", NULL, operation_data->data_socket, &operation_data->peer_address, operation_data->peer_address_length);
         return false;
+    }
+    else
+    {
+        printf("Specified block size: %d bytes.\n", operation_data->block_size);
     }
 
     transfer_data->data_packet_max_size = sizeof(Packet_t) + operation_data->block_size;
@@ -330,7 +334,8 @@ bool tftp_await_acknowledgement(uint16_t block_number, OperationData_t *op_data)
 bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
 {
     uint64_t total_file_size;
-    uint16_t total_block_count;
+    uint32_t total_block_count;
+    uint8_t block_overflow_multiplier = 0;
 
     fseek(tx_data->file, 0L, SEEK_END);
     total_file_size = ftell(tx_data->file);
@@ -349,13 +354,18 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
         tx_data->data_packet_ptr->data.block_number = tx_data->current_block_number;
         tx_data->latest_file_bytes_read = fread(tx_data->data_packet_ptr->data.data, 1, op_data->block_size, tx_data->file);
 
+        if (tx_data->current_block_number == 0)
+        {
+            block_overflow_multiplier++;
+        }
+
         printf("Read %d bytes to transmission buffer.\n", tx_data->latest_file_bytes_read);
 
         if (tx_data->latest_file_bytes_read <= 0)
         {
             if (feof(tx_data->file) != 0)
             {
-                printf("Sending final block: %u/%u.\n", tx_data->current_block_number, total_block_count);
+                printf("Sending final block: %u/%u.\n", tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
                 tx_data->latest_file_bytes_read = 0;
             }
             else
@@ -366,7 +376,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
         }
         else if (tx_data->latest_file_bytes_read < op_data->block_size)
         {
-            printf("Sending final block: %u/%u.\n", tx_data->current_block_number, total_block_count);
+            printf("Sending final block: %u/%u.\n", tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
         }
 
         while (tx_data->resend_counter < tftp_max_retransmit_count)
@@ -384,7 +394,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
                 tx_data->total_file_bytes_transmitted += tx_data->latest_file_bytes_read;
             }
 
-            printf("Sent %lu/%lu bytes of block %u/%u.\n", tx_data->total_file_bytes_transmitted, total_file_size, tx_data->current_block_number, total_block_count);
+            printf("Sent %lu/%lu bytes of block %u/%u.\n", tx_data->total_file_bytes_transmitted, total_file_size, tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
             tx_data->bytes_received = recvfrom(op_data->data_socket, tx_data->response_packet_ptr, tx_data->response_packet_max_size, 0, (struct sockaddr *)&(op_data->peer_address), &(op_data->peer_address_length));
 
             if (tx_data->bytes_received < 0)
@@ -424,18 +434,20 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
 bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
 {
     bool received = false;
+    uint16_t next_block_number;
     ssize_t bytes_written = 0;
     printf("Beginning file reception.\n");
 
     do
     {
         received = false;
+        next_block_number = tx_data->current_block_number + 1;
 
         while (!received)
         {
             tx_data->bytes_received = recvfrom(op_data->data_socket, tx_data->data_packet_ptr, tx_data->data_packet_max_size, 0, (struct sockaddr *)&(op_data->peer_address), &(op_data->peer_address_length));
 
-            if (tx_data->bytes_received > 0 && tx_data->data_packet_ptr->data.block_number == tx_data->current_block_number + 1)
+            if (tx_data->bytes_received > 0 && tx_data->data_packet_ptr->data.block_number == next_block_number)
             {
                 printf ("Block #%u received!\n", tx_data->current_block_number);
                 bytes_written = fwrite(tx_data->data_packet_ptr->data.data, 1, tx_data->bytes_received - sizeof(Packet_t), tx_data->file); 
@@ -453,7 +465,7 @@ bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
             {
                 perror("Receive attempt failed");
                 tx_data->resend_counter++;
-                printf ("Block #%u still not received, resending acknowledgement of block #%u.\n", tx_data->current_block_number + 1, tx_data->current_block_number);
+                printf ("Block #%u still not received, resending acknowledgement of block #%u.\n", next_block_number, tx_data->current_block_number);
             }
             else
             {

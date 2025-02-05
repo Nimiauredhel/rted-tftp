@@ -126,7 +126,7 @@ static OperationData_t* server_parse_request_data(Packet_t *request, ssize_t req
             if ((strcmp(blksize_string, TFTP_BLKSIZE_STRING) == 0)
                 && (contents_index + 4 < request_length))
             {
-                contents_index += strlen(blksize_string);
+                contents_index += strlen(blksize_string) + 1;
                 blksize_octets_string = request->request.contents + contents_index;
             }
         }
@@ -198,10 +198,9 @@ static void server_listener_loop(void)
             printf("Received zero bytes.\n");
             continue;
         }
-        else
-        {
-            printf("Received %lu bytes.\n", data.bytes_received);
-        }
+
+        printf("Received %lu bytes.\n", data.bytes_received);
+        fwrite(data.request_buffer->request.contents, sizeof(char), data.bytes_received, stdout);
 
         switch (data.request_buffer->opcode)
         {

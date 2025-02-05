@@ -2,8 +2,8 @@
 
 static bool send_request_packet(OperationData_t *data)
 {
-    static const uint8_t blocksize_blksize_str_len = 7;
-    static const uint8_t blocksize_octets_str_len = 5;
+    static const uint8_t blocksize_blksize_str_len = 8;
+    static const uint8_t blocksize_octets_str_len = 6;
 
     uint16_t contents_idx = 0;
     char *filename_in_path;
@@ -22,11 +22,12 @@ static bool send_request_packet(OperationData_t *data)
     }
     else
     {
-        filename_len = strlen(filename_in_path);
+        filename_in_path += 1;
+        filename_len = strlen(filename_in_path) + 1;
     }
 
     // the minimal (DRQ) contents size consists of a filename field + terminator
-    contents_size = filename_len + 1;
+    contents_size = filename_len;
 
     // if this is not a delete request, additional fields must be taken into account
     if (data->operation_id != TFTP_OPERATION_REQUEST_DELETE)
@@ -47,10 +48,10 @@ static bool send_request_packet(OperationData_t *data)
         // calculating required space for the additional data fields
         contents_size +=
             // space for transfer mode + terminator
-            + transfer_mode_len + 1 
+            + transfer_mode_len 
             // optional space for blksize & octet fields + terminators
             + ((data->block_size > 0 && data->block_size != TFTP_BLKSIZE_DEFAULT)
-                ? blocksize_blksize_str_len + blocksize_octets_str_len + 2 : 0);
+                ? blocksize_blksize_str_len + blocksize_octets_str_len : 0);
     }
 
     // summing up the packet size
@@ -104,8 +105,11 @@ static bool send_request_packet(OperationData_t *data)
         }
     }
 
+    FILE *request_log = fopen("last_request_contents", "w");
     printf("Sending %s request. Contents:\n", data->request_description);
     fwrite(request_packet_ptr->request.contents, sizeof(char), contents_size, stdout);
+    fwrite(request_packet_ptr->request.contents, sizeof(char), contents_size, request_log);
+    fclose(request_log);
     printf("\n");
 
     ssize_t bytes_sent = sendto(data->data_socket, request_packet_ptr, sizeof(Packet_t) + contents_size, 0, (struct sockaddr *)&(data->peer_address), data->peer_address_length);
