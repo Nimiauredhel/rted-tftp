@@ -123,7 +123,7 @@ static OperationData_t* server_parse_request_data(Packet_t *request, ssize_t req
             contents_index += strlen(mode_string) + 1;
             blksize_string = request->request.contents + contents_index;
 
-            if ((strcmp(blksize_string, TFTP_BLKSIZE_STRING) == 0)
+            if ((strcasecmp(blksize_string, TFTP_BLKSIZE_STRING) == 0)
                 && (contents_index + 4 < request_length))
             {
                 contents_index += strlen(blksize_string) + 1;

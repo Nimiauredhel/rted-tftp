@@ -192,7 +192,7 @@ OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockad
 
             for (int8_t idx = 0; idx < TFTP_MODES_COUNT; idx++)
             {
-                if (strcmp(mode_string, tftp_mode_strings[idx]) == 0)
+                if (strcasecmp(mode_string, tftp_mode_strings[idx]) == 0)
                 {
                     data->transfer_mode = (TFTPTransferMode_t)idx;
                     break;
