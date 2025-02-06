@@ -65,13 +65,13 @@ static bool send_request_packet(OperationData_t *data)
     switch(data->operation_id)
     {
         case TFTP_OPERATION_RECEIVE:
-            request_packet_ptr->request.opcode = TFTP_RRQ;
+            request_packet_ptr->request.opcode = htons(TFTP_RRQ);
             break;
         case TFTP_OPERATION_SEND:
-            request_packet_ptr->request.opcode = TFTP_WRQ;
+            request_packet_ptr->request.opcode = htons(TFTP_WRQ);
             break;
         case TFTP_OPERATION_REQUEST_DELETE:
-            request_packet_ptr->request.opcode = TFTP_DRQ;
+            request_packet_ptr->request.opcode = htons(TFTP_DRQ);
             break;
         case TFTP_OPERATION_UNDEFINED:
         case TFTP_OPERATION_HANDLE_DELETE:

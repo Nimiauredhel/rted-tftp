@@ -29,6 +29,8 @@ const OperationMode_t tftp_operation_modes[OPERATION_MODES_COUNT] =
     { 4, "delete", "Erase named file from server", "%s %s <server ip> <filename>" },
 };
 
+bool is_server = false;
+
 void tftp_free_transfer_data(TransferData_t *data)
 {
     printf("Deallocating transfer data.\n");
@@ -273,7 +275,8 @@ void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_pt
 
     while (bind_result < 0)
     {
-        rx_port = random_range(PORT_MIN, PORT_MAX);
+        rx_port = random_range(is_server ? SERVER_DATA_PORT_MIN : CLIENT_DATA_PORT_MIN,
+                is_server ? SERVER_DATA_PORT_MAX : CLIENT_DATA_PORT_MAX);
         address_ptr->sin_port = htons(rx_port);
         bind_result = bind(*socket_ptr,
                 (struct sockaddr*)address_ptr,
@@ -292,7 +295,7 @@ void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_pt
 bool tftp_send_ack(uint16_t block_number, int socket, const struct sockaddr_in *peer_address_ptr, socklen_t peer_address_length)
 {
     printf("Sending ACK with block number %u.\n", block_number);
-    Packet_t ack_packet = { .ack.opcode = TFTP_ACK, .ack.block_number = block_number };
+    Packet_t ack_packet = { .ack.opcode = htons(TFTP_ACK), .ack.block_number = htons(block_number) };
 
     if (0 > sendto(socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)peer_address_ptr, peer_address_length))
     {
@@ -310,8 +313,8 @@ void tftp_send_error(TFTPErrorCode_t error_code, const char *error_message, cons
     Packet_t *error_packet = malloc(packet_size);
     explicit_bzero(error_packet, packet_size);
 
-    error_packet->opcode = TFTP_ERROR;
-    error_packet->error.error_code = error_code;
+    error_packet->opcode = htons(TFTP_ERROR);
+    error_packet->error.error_code = htons(error_code);
 
     if (error_message != NULL)
     {
@@ -323,7 +326,7 @@ void tftp_send_error(TFTPErrorCode_t error_code, const char *error_message, cons
         strcat(error_packet->error.error_message, error_item);
     }
 
-    printf("Sending error packet with code %d, message: %s\n", error_packet->error.error_code, error_packet->error.error_message);
+    printf("Sending error packet with code %d, message: %s%s\n", error_code, error_message, error_item);
 
     ssize_t bytes_sent = sendto(data_socket, error_packet, packet_size, 0, (struct sockaddr *)peer_address_ptr, peer_address_length);
 
@@ -339,32 +342,35 @@ bool tftp_await_acknowledgement(uint16_t block_number, OperationData_t *op_data)
 {
     uint8_t retry_counter = 0;
     ssize_t bytes_received = 0;
+    TFTPOpcode_t incoming_opcode;
 
     // dynamically allocating the packet to allow extra space for error packet message field
-    Packet_t *incoming_packet = malloc(TFTP_ERROR_PACKET_MAX_SIZE);
+    Packet_t *incoming_packet = malloc(TFTP_RESPONSE_PACKET_MAX_SIZE);
 
     while (retry_counter < tftp_max_retransmit_count)
     {
         retry_counter++;
         printf("Awaiting ACK packet (attempt #%d).\n", retry_counter);
-        bytes_received = recvfrom(op_data->data_socket, incoming_packet, TFTP_ERROR_PACKET_MAX_SIZE, 0, (struct sockaddr *)&(op_data->peer_address), &(op_data->peer_address_length));
+        bytes_received = recvfrom(op_data->data_socket, incoming_packet, TFTP_RESPONSE_PACKET_MAX_SIZE, 0, (struct sockaddr *)&(op_data->peer_address), &(op_data->peer_address_length));
 
         if (bytes_received > 0)
         {
-            if (incoming_packet->opcode == TFTP_ACK && incoming_packet->ack.block_number == block_number)
+            incoming_opcode = ntohs(incoming_packet->opcode);
+
+            if (incoming_opcode == TFTP_ACK && ntohs(incoming_packet->ack.block_number) == block_number)
             {
                 free(incoming_packet);
                 return true;
             }
-            else if (incoming_packet->opcode == TFTP_ERROR)
+            else if (incoming_opcode == TFTP_ERROR)
             {
-                printf("Received error message (code %u) from server with message: %s\n", incoming_packet->error.error_code, incoming_packet->error.error_message);
+                printf("Received error message (code %u) from peer with message: %s\n", ntohs(incoming_packet->error.error_code), incoming_packet->error.error_message);
                 free(incoming_packet);
                 return false;
             }
             else
             {
-                printf("Received packet with opcode %d, expected %d (ACK) or %d(ERROR)!\n", incoming_packet->opcode, TFTP_ACK, TFTP_ERROR);
+                printf("Received packet with opcode %d, expected %d (ACK) or %d (ERROR)!\n", incoming_opcode, TFTP_ACK, TFTP_ERROR);
             }
         }
     }
@@ -387,7 +393,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
 
     total_block_count = (total_file_size / op_data->block_size) + 1;
 
-    tx_data->data_packet_ptr->data.opcode = TFTP_DATA;
+    tx_data->data_packet_ptr->data.opcode = htons(TFTP_DATA);
     tx_data->bytes_sent = tx_data->data_packet_max_size;
     printf("Beginning transmission of file with total size of %lu bytes, in %u blocks.\n", total_file_size, total_block_count);
 
@@ -395,7 +401,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
     {
         tx_data->current_block_number++;
         tx_data->resend_counter = 0;
-        tx_data->data_packet_ptr->data.block_number = tx_data->current_block_number;
+        tx_data->data_packet_ptr->data.block_number = htons(tx_data->current_block_number);
         tx_data->latest_file_bytes_read = fread(tx_data->data_packet_ptr->data.data, 1, op_data->block_size, tx_data->file);
 
         if (tx_data->current_block_number == 0)
@@ -453,8 +459,13 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
                     return false;
                 }
             }
-            else if (tx_data->response_packet_ptr->opcode == TFTP_ACK
-                    && tx_data->response_packet_ptr->ack.block_number == tx_data->current_block_number)
+            else if (ntohs(tx_data->response_packet_ptr->opcode == TFTP_ERROR))
+            {
+                printf("Received error message (code %u) from peer with message: %s\n", ntohs(tx_data->response_packet_ptr->error.error_code), tx_data->response_packet_ptr->error.error_message);
+                return false;
+            }
+            else if (ntohs(tx_data->response_packet_ptr->opcode) == TFTP_ACK
+                    && ntohs(tx_data->response_packet_ptr->ack.block_number) == tx_data->current_block_number)
             {
                 printf ("Block #%u acknowledged!\n", tx_data->current_block_number);
                 break;
@@ -492,25 +503,33 @@ bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
         {
             tx_data->bytes_received = recvfrom(op_data->data_socket, tx_data->data_packet_ptr, tx_data->data_packet_max_size, 0, (struct sockaddr *)&(op_data->peer_address), &(op_data->peer_address_length));
 
-            if (tx_data->bytes_received > 0 && tx_data->data_packet_ptr->data.block_number == tx_data->current_block_number)
+            if (tx_data->bytes_received > 0)
             {
-                printf ("Block #%u received!\n", tx_data->current_block_number);
-                bytes_written = fwrite(tx_data->data_packet_ptr->data.data, 1, tx_data->bytes_received - sizeof(Packet_t), tx_data->file); 
-
-                if (bytes_written <= 0)
+                if (ntohs(tx_data->data_packet_ptr->opcode) == TFTP_ERROR)
                 {
-                    perror("Writing to file failed");
-                    tftp_send_error(TFTP_ERROR_UNDEFINED, "Writing to file failed", NULL, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
+                    printf("Received error message (code %u) from peer with message: %s\n", ntohs(tx_data->data_packet_ptr->error.error_code), tx_data->data_packet_ptr->error.error_message);
                     return false;
                 }
+                else if  (ntohs(tx_data->data_packet_ptr->opcode) == TFTP_DATA && ntohs(tx_data->data_packet_ptr->data.block_number) == tx_data->current_block_number)
+                {
+                    printf ("Block #%u received!\n", tx_data->current_block_number);
+                    bytes_written = fwrite(tx_data->data_packet_ptr->data.data, 1, tx_data->bytes_received - sizeof(Packet_t), tx_data->file); 
 
-                // acknowledge received block
-                tftp_send_ack(tx_data->current_block_number, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
+                    if (bytes_written <= 0)
+                    {
+                        perror("Writing to file failed");
+                        tftp_send_error(TFTP_ERROR_UNDEFINED, "Writing to file failed", NULL, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
+                        return false;
+                    }
 
-                tx_data->resend_counter = 0;
-                tx_data->current_block_number++;
-                prev_block_number++;
-                received = true;
+                    // acknowledge received block
+                    tftp_send_ack(tx_data->current_block_number, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
+
+                    tx_data->resend_counter = 0;
+                    tx_data->current_block_number++;
+                    prev_block_number++;
+                    received = true;
+                }
             }
             else if (tx_data->resend_counter < tftp_max_retransmit_count)
             {

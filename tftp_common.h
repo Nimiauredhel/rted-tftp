@@ -13,7 +13,7 @@
 #define TFTP_BLKSIZE_STRING "blksize"
 #define TFTP_FILENAME_MAX 255
 #define TFTP_ERROR_MESSAGE_MAX_LENGTH 128
-#define TFTP_ERROR_PACKET_MAX_SIZE (sizeof(Packet_t) + TFTP_ERROR_MESSAGE_MAX_LENGTH)
+#define TFTP_RESPONSE_PACKET_MAX_SIZE (sizeof(Packet_t) + TFTP_ERROR_MESSAGE_MAX_LENGTH)
 
 typedef enum TFTPOpcode
 {
@@ -141,6 +141,8 @@ extern const char tftp_mode_strings[TFTP_MODES_COUNT][9];
 extern const char tftp_opcode_strings[7][6];
 
 extern const OperationMode_t tftp_operation_modes[];
+
+extern bool is_server;
 
 bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *transfer_data, bool receiver);
 void tftp_free_transfer_data(TransferData_t *data);

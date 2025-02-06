@@ -8,7 +8,7 @@ int random_range(int min, int max)
 {
     if (!random_was_seeded)
     {
-        srand(time(NULL));
+        srand(time(NULL) + getpid());
         random_was_seeded = true;
     }
 

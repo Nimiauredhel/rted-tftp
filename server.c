@@ -20,6 +20,11 @@ static void server_init_storage(void)
     }
 }
 
+void server_init_random(void)
+{
+    usleep(random_range(9876, 54321));
+}
+
 static bool server_delete_file(OperationData_t *op_data)
 {
     // acknowledge request
@@ -53,6 +58,8 @@ static bool server_delete_file(OperationData_t *op_data)
 static void server_start_operation(OperationData_t *op_data)
 {
     TransferData_t *tx_data;
+
+    usleep(100000);
 
     switch(op_data->operation_id)
     {
@@ -98,7 +105,7 @@ static OperationData_t* server_parse_request_data(Packet_t *request, ssize_t req
     // extract request strings
     strncat(file_path, request->request.contents, TFTP_FILENAME_MAX);
 
-    switch(request->opcode)
+    switch(ntohs(request->opcode))
     {
         case TFTP_RRQ:
             op_id = TFTP_OPERATION_SEND;
@@ -182,13 +189,14 @@ static void init_server_listener_data(ServerListenerData_t *data)
         perror("Failed to allocate buffer for incoming requests");
         exit(EXIT_FAILURE);
     }
+
+    explicit_bzero(data->request_buffer, data->buffer_size);
 }
 
 static void server_listener_loop(void)
 {
     static const char *received_packet_message_format = "Received %s packet in requests socket.\n";
-
-    ServerListenerData_t data;
+    ServerListenerData_t data = {0};
 
     init_server_listener_data(&data);
 
@@ -196,7 +204,6 @@ static void server_listener_loop(void)
     {
         printf("Awaiting requests.\n");
 
-        explicit_bzero(data.request_buffer, data.buffer_size);
         data.bytes_received = recvfrom(data.requests_socket, data.request_buffer, data.buffer_size, 0, (struct sockaddr*)&(data.client_address), &(data.client_address_length));
 
         if (should_terminate) break;
@@ -213,32 +220,40 @@ static void server_listener_loop(void)
             continue;
         }
 
-        printf("Received %lu bytes.\n", data.bytes_received);
+        printf("Received %lu bytes. Contents:\n", data.bytes_received);
         fwrite(data.request_buffer->request.contents, sizeof(char), data.bytes_received, stdout);
+        printf("\n");
 
-        switch (data.request_buffer->opcode)
+        data.incoming_opcode = ntohs(data.request_buffer->opcode);
+
+        switch (data.incoming_opcode)
         {
             // *** Invalid (non-request) opcodes: send an error and move on
             case TFTP_DATA:
             case TFTP_ACK:
             case TFTP_ERROR:
             default:
-                fprintf(stderr, received_packet_message_format, tftp_opcode_strings[data.request_buffer->opcode]);
-                tftp_send_error(TFTP_ERROR_ILLEGAL_OPERATION, "received packet in requests socket with opcode ", tftp_opcode_strings[data.request_buffer->opcode], data.requests_socket, &data.client_address, data.client_address_length); 
+                fprintf(stderr, received_packet_message_format, tftp_opcode_strings[data.incoming_opcode]);
+                tftp_send_error(TFTP_ERROR_ILLEGAL_OPERATION, "received packet in requests socket with opcode ", tftp_opcode_strings[data.incoming_opcode], data.requests_socket, &data.client_address, data.client_address_length); 
                 break;
             // *** Standard request opcodes: parse and begin operation
             case TFTP_RRQ:
             case TFTP_WRQ:
             case TFTP_DRQ:
-                printf(received_packet_message_format, tftp_opcode_strings[data.request_buffer->opcode]);
+                printf(received_packet_message_format, tftp_opcode_strings[data.incoming_opcode]);
                 server_start_operation(server_parse_request_data(data.request_buffer, data.bytes_received, data.client_address));
                 break;
         }
+
+        // buffer was used in this iteration - clear it to zero
+        explicit_bzero(data.request_buffer, data.buffer_size);
     }
 }
 
 void server_start(void)
 {
+    is_server = true;
     server_init_storage();
+    server_init_random();
     server_listener_loop();
 }
