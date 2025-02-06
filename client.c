@@ -105,12 +105,13 @@ static bool send_request_packet(OperationData_t *data)
         }
     }
 
-    FILE *request_log = fopen("last_request_contents", "w");
+    // TODO: remove this debug code
+    /*FILE *request_log = fopen("last_request_contents", "w");
     printf("Sending %s request. Contents:\n", data->request_description);
     fwrite(request_packet_ptr->request.contents, sizeof(char), contents_size, stdout);
     fwrite(request_packet_ptr->request.contents, sizeof(char), contents_size, request_log);
     fclose(request_log);
-    printf("\n");
+    printf("\n");*/
 
     ssize_t bytes_sent = sendto(data->data_socket, request_packet_ptr, sizeof(Packet_t) + contents_size, 0, (struct sockaddr *)&(data->peer_address), data->peer_address_length);
 
