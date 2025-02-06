@@ -59,8 +59,6 @@ static void server_start_operation(OperationData_t *op_data)
 {
     TransferData_t *tx_data;
 
-    usleep(100000);
-
     switch(op_data->operation_id)
     {
         case TFTP_OPERATION_RECEIVE:
@@ -70,7 +68,14 @@ static void server_start_operation(OperationData_t *op_data)
                 && tftp_send_ack(0, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length))
             {
                 // receive file
-                tftp_receive_file(op_data, tx_data);
+                if (false == tftp_receive_file(op_data, tx_data))
+                {
+                    // if failed during transfer, nullify file handle and delete incomplete file
+                    printf("Deleting partial download.\n");
+                    fclose(tx_data->file);
+                    tx_data->file = NULL;
+                    remove(op_data->path);
+                }
             }
             tftp_free_transfer_data(tx_data);
             break;
