@@ -65,7 +65,9 @@ int main(int argc, char *argv[])
         }
         else
         {
-            client_start_operation(data);
+            bool operation_success = client_start_operation(data);
+            printf("Operation %s.\n", operation_success ? "completed" : "aborted");
+            tftp_free_operation_data(data);
         }
     }
     else

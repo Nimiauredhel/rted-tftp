@@ -32,25 +32,55 @@ const OperationMode_t tftp_operation_modes[OPERATION_MODES_COUNT] =
 void tftp_free_transfer_data(TransferData_t *data)
 {
     printf("Deallocating transfer data.\n");
+
     if (data->file != NULL)
     {
         fclose(data->file);
     }
-    free(data->data_packet_ptr);
-    free(data->response_packet_ptr);
+
+    if (data->data_packet_ptr != NULL) free(data->data_packet_ptr);
+    if (data->response_packet_ptr != NULL) free(data->response_packet_ptr);
+
     free(data);
 }
 
 void tftp_free_operation_data(OperationData_t *data)
 {
     printf("Deallocating '%s' operation data.\n", data->request_description);
-    close(data->data_socket);
+
+    if (data->data_socket > 0)
+    {
+        close(data->data_socket);
+    }
+
     free(data);
 }
 
 bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *transfer_data, bool receiver)
 {
     // TODO: null check input pointers
+    explicit_bzero(transfer_data, sizeof(TransferData_t));
+
+    if (receiver)
+    {
+        transfer_data->file = fopen(operation_data->path, "r");
+
+        if (transfer_data->file != NULL)
+        {
+            char timestamp[32];
+            struct stat file_attr;
+            stat(operation_data->path, &file_attr);
+
+            struct tm tm;
+            localtime_r(&file_attr.st_ctim.tv_sec, &tm);
+            strftime(timestamp, 32, "%Y-%m-%d %H:%M:%S.", &tm);
+
+            printf("File already exists since %s. Aborting receive operation.\n", timestamp);
+            tftp_send_error(operation_data->data_socket, "File already exists! To overwrite, request deletion then try again. Creation date: ", timestamp, operation_data->data_socket, &operation_data->peer_address, operation_data->peer_address_length);
+            return false;
+        }
+    }
+
     printf("%s file: '%s'\n", receiver ? "Creating" : "Opening", operation_data->path);
     transfer_data->file = fopen(operation_data->path, receiver ? "w" : "r");
 
@@ -209,7 +239,8 @@ OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockad
 
 void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr)
 {
-    struct timeval socket_timeout = { .tv_sec = 1, .tv_usec = 0 };
+    static const int reuse_flag = 1;
+    static const struct timeval socket_timeout = { .tv_sec = 1, .tv_usec = 0 };
 
     *socket_ptr = socket(AF_INET, SOCK_DGRAM, 0);
 
@@ -219,7 +250,19 @@ void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_pt
         exit(EXIT_FAILURE);
     }
 
-    if( 0 > setsockopt(*socket_ptr, SOL_SOCKET, SO_RCVTIMEO,  &socket_timeout, sizeof(socket_timeout)))
+    if(0 > setsockopt(*socket_ptr, SOL_SOCKET, SO_REUSEADDR,  &reuse_flag, sizeof(reuse_flag)))
+    {
+        perror("Failed to set socket 'reuse address' option");
+        exit(EXIT_FAILURE);
+    }
+
+    if(0 > setsockopt(*socket_ptr, SOL_SOCKET, SO_REUSEPORT,  &reuse_flag, sizeof(reuse_flag)))
+    {
+        perror("Failed to set socket 'reuse port' option");
+        exit(EXIT_FAILURE);
+    }
+
+    if(0 > setsockopt(*socket_ptr, SOL_SOCKET, SO_RCVTIMEO,  &socket_timeout, sizeof(socket_timeout)))
     {
         perror("Failed to set socket timeout");
         exit(EXIT_FAILURE);
@@ -265,6 +308,7 @@ void tftp_send_error(TFTPErrorCode_t error_code, const char *error_message, cons
     size_t error_message_len = (error_message == NULL ? 0 : strlen(error_message) + (error_item == NULL ? 0 : strlen(error_item)));
     size_t packet_size = sizeof(Packet_t) + error_message_len + 2;
     Packet_t *error_packet = malloc(packet_size);
+    explicit_bzero(error_packet, packet_size);
 
     error_packet->opcode = TFTP_ERROR;
     error_packet->error.error_code = error_code;
@@ -434,20 +478,21 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
 bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
 {
     bool received = false;
-    uint16_t next_block_number;
+    uint16_t prev_block_number = 0;
     ssize_t bytes_written = 0;
+
+    tx_data->current_block_number = 1;
     printf("Beginning file reception.\n");
 
     do
     {
         received = false;
-        next_block_number = tx_data->current_block_number + 1;
 
         while (!received)
         {
             tx_data->bytes_received = recvfrom(op_data->data_socket, tx_data->data_packet_ptr, tx_data->data_packet_max_size, 0, (struct sockaddr *)&(op_data->peer_address), &(op_data->peer_address_length));
 
-            if (tx_data->bytes_received > 0 && tx_data->data_packet_ptr->data.block_number == next_block_number)
+            if (tx_data->bytes_received > 0 && tx_data->data_packet_ptr->data.block_number == tx_data->current_block_number)
             {
                 printf ("Block #%u received!\n", tx_data->current_block_number);
                 bytes_written = fwrite(tx_data->data_packet_ptr->data.data, 1, tx_data->bytes_received - sizeof(Packet_t), tx_data->file); 
@@ -455,26 +500,29 @@ bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
                 if (bytes_written <= 0)
                 {
                     perror("Writing to file failed");
+                    tftp_send_error(TFTP_ERROR_UNDEFINED, "Writing to file failed", NULL, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
+                    return false;
                 }
+
+                // acknowledge received block
+                tftp_send_ack(tx_data->current_block_number, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
 
                 tx_data->resend_counter = 0;
                 tx_data->current_block_number++;
+                prev_block_number++;
                 received = true;
             }
             else if (tx_data->resend_counter < tftp_max_retransmit_count)
             {
                 perror("Receive attempt failed");
                 tx_data->resend_counter++;
-                printf ("Block #%u still not received, resending acknowledgement of block #%u.\n", next_block_number, tx_data->current_block_number);
+                printf ("Block #%u still not received, resending acknowledgement of block #%u.\n", tx_data->current_block_number, prev_block_number);
             }
             else
             {
                 printf ("Block #%u still not received, max retransmission limit reached. Aborting.\n", tx_data->current_block_number);
                 return false;
             }
-
-            // acknowledge received block
-            tftp_send_ack(tx_data->current_block_number, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
         }
     }
     while (tx_data->bytes_received == tx_data->data_packet_max_size);

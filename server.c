@@ -135,13 +135,27 @@ static OperationData_t* server_parse_request_data(Packet_t *request, ssize_t req
     return tftp_init_operation_data(op_id, peer_address, file_path, mode_string, blksize_octets_string);
 }
 
-static void fill_server_listener_data(ServerListenerData_t *data)
+static void init_server_listener_data(ServerListenerData_t *data)
 {
+    static const int reuse_flag = 1;
+
     data->requests_socket = socket(AF_INET, SOCK_DGRAM, 0);
 
     if (data->requests_socket < 0)
     {
         perror("Failed to create requests socket");
+        exit(EXIT_FAILURE);
+    }
+
+    if(0 > setsockopt(data->requests_socket, SOL_SOCKET, SO_REUSEADDR,  &reuse_flag, sizeof(reuse_flag)))
+    {
+        perror("Failed to set socket 'reuse address' option");
+        exit(EXIT_FAILURE);
+    }
+
+    if(0 > setsockopt(data->requests_socket, SOL_SOCKET, SO_REUSEPORT,  &reuse_flag, sizeof(reuse_flag)))
+    {
+        perror("Failed to set socket 'reuse port' option");
         exit(EXIT_FAILURE);
     }
 
@@ -176,7 +190,7 @@ static void server_listener_loop(void)
 
     ServerListenerData_t data;
 
-    fill_server_listener_data(&data);
+    init_server_listener_data(&data);
 
     while(!should_terminate)
     {
