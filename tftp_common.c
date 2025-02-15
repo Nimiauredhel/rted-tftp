@@ -444,13 +444,13 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
             block_overflow_multiplier++;
         }
 
-        printf("\r%.2f Read %d bytes to transmission buffer -> ", seconds_since_clock(start_clock), tx_data->latest_file_bytes_read);
+        printf("\r[%.2fs] Read %d bytes to transmission buffer -> ", seconds_since_clock(start_clock), tx_data->latest_file_bytes_read);
 
         if (tx_data->latest_file_bytes_read <= 0)
         {
             if (feof(tx_data->file) != 0)
             {
-                printf("\nSending final block: %u/%u.\n", tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
+                printf("Sending final block: %u/%u.\n", tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
                 tx_data->latest_file_bytes_read = 0;
             }
             else
@@ -461,7 +461,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
         }
         else if (tx_data->latest_file_bytes_read < op_data->block_size)
         {
-            printf("\nSending final block: %u/%u.\n", tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
+            printf("Sending final block: %u/%u.\n", tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
         }
 
         while (tx_data->resend_counter < tftp_max_retransmit_count)
@@ -519,7 +519,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
         }
     }
 
-    printf("\nFile transmission completed in %.2f.\n", seconds_since_clock(start_clock));
+    printf("\nFile transmission completed in %.2fs.\n", seconds_since_clock(start_clock));
     return true;
 }
 
