@@ -9,7 +9,7 @@
 
 #define OPERATION_MODES_COUNT 4
 #define OPERATION_MODES_MAX_LENGTH 8
-#define TFTP_MODES_COUNT 2
+#define TFTP_MODES_COUNT 3
 #define TFTP_BLKSIZE_STRING "blksize"
 #define TFTP_FILENAME_MAX 255
 #define TFTP_ERROR_MESSAGE_MAX_LENGTH 128
@@ -31,6 +31,7 @@ typedef enum TFTPTransferMode
     TFTP_MODE_UNSPECIFIED = -1,
     TFTP_MODE_OCTET = 0,
     TFTP_MODE_NETASCII = 1,
+    TFTP_MODE_MAIL = 2,
 } TFTPTransferMode_t;
 
 typedef enum TFTPErrorCode

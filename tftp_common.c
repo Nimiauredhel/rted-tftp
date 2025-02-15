@@ -7,7 +7,8 @@ const uint32_t tftp_data_timeout = 1000000;
 const char tftp_mode_strings[TFTP_MODES_COUNT][9] =
 {
     "octet",
-    "netascii"
+    "netascii",
+    "mail"
 };
 
 const char tftp_opcode_strings[7][6] =
@@ -65,7 +66,7 @@ bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *tr
 
     if (receiver)
     {
-        transfer_data->file = fopen(operation_data->path, "r");
+        transfer_data->file = fopen(operation_data->path, "rb");
 
         if (transfer_data->file != NULL)
         {
@@ -84,7 +85,7 @@ bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *tr
     }
 
     printf("%s file: '%s'\n", receiver ? "Creating" : "Opening", operation_data->path);
-    transfer_data->file = fopen(operation_data->path, receiver ? "w" : "r");
+    transfer_data->file = fopen(operation_data->path, receiver ? "wb" : "rb");
 
     if (transfer_data->file == NULL)
     {
@@ -184,10 +185,13 @@ OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockad
 
     if (!is_delete)
     {
+        // if no transfer mode is specified, we default to binary
         if (mode_string == NULL || strlen(mode_string) == 0)
         {
             data->transfer_mode = TFTP_MODE_OCTET;
+            printf("Transfer mode unspecified - defaulting to octet (binary) mode.\n");
         }
+        // if the transfer mode IS specified, we try to match it to one we recognize
         else
         {
             data->transfer_mode = TFTP_MODE_UNSPECIFIED;
@@ -202,14 +206,34 @@ OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockad
             }
         }
 
-        if (data->transfer_mode == TFTP_MODE_UNSPECIFIED)
+        // filtering unsupported transfer modes (only octet is supported)
+        // you: "this switch case could have been a single if statement!"
+        // me: "some day I shall implement netascii and mail and you will regret your words and deeds"
+        switch(data->transfer_mode)
         {
-            printf("Invalid transfer mode (%s) specified! Aborting.\n", mode_string == NULL ? "NULL" : mode_string);
-            tftp_send_error(TFTP_ERROR_ILLEGAL_OPERATION, "invalid transfer mode: ", mode_string, data->data_socket, &data->peer_address, data->peer_address_length); 
-            tftp_free_operation_data(data);
-            return NULL;
+            // *** unsupported transfer modes ***
+            // if the transfer mode is STILL unspecified, it means that the client
+            // likely requested one that we don't know and cannot support, therefore invalid
+            case TFTP_MODE_UNSPECIFIED:
+            // this program does not implement netascii conversion yet,
+            // so netascii requests will be sadly rejected as well.
+            // TODO: support netascii some day, maybe? to be determined
+            case TFTP_MODE_NETASCII:
+            // this program will NEVER support TFTP e-mail forwarding. unless I get paid to implement it.
+            // please contact me ASAP if you would like to pay me to implement TFTP e-mail forwarding in the current year.
+            case TFTP_MODE_MAIL:
+                printf("Invalid transfer mode (%s) specified! Aborting.\n", mode_string == NULL ? "NULL" : mode_string);
+                tftp_send_error(TFTP_ERROR_ILLEGAL_OPERATION, "invalid transfer mode: ", mode_string, data->data_socket, &data->peer_address, data->peer_address_length); 
+                tftp_free_operation_data(data);
+                return NULL;
+            // *** supported transfer modes ***
+            case TFTP_MODE_OCTET:
+                break;
         }
 
+        printf("Transfer mode: (%s).\n", mode_string);
+
+        // determine requested block size
         data->block_size = 0;
 
         if (blocksize_string != NULL)
@@ -230,6 +254,10 @@ OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockad
             tftp_send_error(TFTP_ERROR_ILLEGAL_OPERATION, "unsupported block size. Valid range is ", range_str, data->data_socket, &data->peer_address, data->peer_address_length); 
             tftp_free_operation_data(data);
             return NULL;
+        }
+        else
+        {
+            printf("Transfer block size: %u bytes.\nNote: transfer may fail if total packet size exceeds MTU.\n", data->block_size);
         }
     }
 
@@ -308,6 +336,12 @@ bool tftp_send_ack(uint16_t block_number, int socket, const struct sockaddr_in *
 
 void tftp_send_error(TFTPErrorCode_t error_code, const char *error_message, const char *error_item, int data_socket, const struct sockaddr_in *peer_address_ptr, socklen_t peer_address_length)
 {
+    if (peer_address_ptr->sin_port == htons(69))
+    {
+        printf("Errors during request phase not forwarded to peer (no peer yet).\n");
+        return;
+    }
+
     size_t error_message_len = (error_message == NULL ? 0 : strlen(error_message) + (error_item == NULL ? 0 : strlen(error_item)));
     size_t packet_size = sizeof(Packet_t) + error_message_len + 2;
     Packet_t *error_packet = malloc(packet_size);
