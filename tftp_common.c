@@ -417,6 +417,7 @@ bool tftp_await_acknowledgement(uint16_t block_number, OperationData_t *op_data)
 
 bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
 {
+    bool last_print_was_progress = false;
     uint64_t total_file_size;
     uint32_t total_block_count;
     uint8_t block_overflow_multiplier = 0;
@@ -443,13 +444,13 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
             block_overflow_multiplier++;
         }
 
-        printf("Read %d bytes to transmission buffer.\n", tx_data->latest_file_bytes_read);
+        printf("\rRead %d bytes to transmission buffer -> ", tx_data->latest_file_bytes_read);
 
         if (tx_data->latest_file_bytes_read <= 0)
         {
             if (feof(tx_data->file) != 0)
             {
-                printf("Sending final block: %u/%u.\n", tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
+                printf("\nSending final block: %u/%u.\n", tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
                 tx_data->latest_file_bytes_read = 0;
             }
             else
@@ -460,7 +461,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
         }
         else if (tx_data->latest_file_bytes_read < op_data->block_size)
         {
-            printf("Sending final block: %u/%u.\n", tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
+            printf("\nSending final block: %u/%u.\n", tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
         }
 
         while (tx_data->resend_counter < tftp_max_retransmit_count)
@@ -478,14 +479,16 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
                 tx_data->total_file_bytes_transmitted += tx_data->latest_file_bytes_read;
             }
 
-            printf("Sent %lu/%lu bytes of block %u/%u.\n", tx_data->total_file_bytes_transmitted, total_file_size, tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
+            printf("Sent %lu/%lu bytes of block %u/%u -> ", tx_data->total_file_bytes_transmitted, total_file_size, tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
+            fflush(stdout);
+
             tx_data->bytes_received = recvfrom(op_data->data_socket, tx_data->response_packet_ptr, tx_data->response_packet_max_size, 0, (struct sockaddr *)&(op_data->peer_address), &(op_data->peer_address_length));
 
             if (tx_data->bytes_received < 0)
             {
                 if (errno == ETIMEDOUT)
                 {
-                    printf("Socket timed out.\n");
+                    printf("\nSocket timed out.\n");
                 }
                 else
                 {
@@ -495,19 +498,19 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
             }
             else if (ntohs(tx_data->response_packet_ptr->opcode == TFTP_ERROR))
             {
-                printf("Received error message (code %u) from peer with message: %s\n", ntohs(tx_data->response_packet_ptr->error.error_code), tx_data->response_packet_ptr->error.error_message);
+                printf("\nReceived error message (code %u) from peer with message: %s\n", ntohs(tx_data->response_packet_ptr->error.error_code), tx_data->response_packet_ptr->error.error_message);
                 return false;
             }
             else if (ntohs(tx_data->response_packet_ptr->opcode) == TFTP_ACK
                     && ntohs(tx_data->response_packet_ptr->ack.block_number) == tx_data->current_block_number)
             {
-                printf ("Block #%u acknowledged!\n", tx_data->current_block_number);
+                printf ("Block #%u acknowledged!\r", tx_data->current_block_number);
                 break;
             }
 
             if (tx_data->resend_counter > tftp_max_retransmit_count)
             {
-                printf ("Block #%u unacknowledged and retry limit reached. Aborting.\n", tx_data->current_block_number);
+                printf ("\nBlock #%u unacknowledged and retry limit reached. Aborting.\n", tx_data->current_block_number);
                 return false;
             }
 
@@ -516,7 +519,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
         }
     }
 
-    printf("File transmission complete.\n");
+    printf("\nFile transmission complete.\n");
     return true;
 }
 
