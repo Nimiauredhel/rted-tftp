@@ -16,3 +16,8 @@ int random_range(int min, int max)
     random_number = (random_number % (max - min + 1)) + min;
     return random_number;
 }
+
+float seconds_since_clock(clock_t start_clock)
+{
+    return (100 * (clock() - (float)start_clock) / CLOCKS_PER_SEC);
+}

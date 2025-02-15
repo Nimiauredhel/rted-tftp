@@ -257,7 +257,7 @@ OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockad
         }
         else
         {
-            printf("Transfer block size: %u bytes.\nNote: transfer may fail if total packet size exceeds MTU.\n", data->block_size);
+            printf("Transfer block size: %u bytes.\n", data->block_size);
         }
     }
 
@@ -430,6 +430,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
     tx_data->data_packet_ptr->data.opcode = htons(TFTP_DATA);
     tx_data->bytes_sent = tx_data->data_packet_max_size;
     printf("Beginning transmission of file with total size of %lu bytes, in %u blocks.\n", total_file_size, total_block_count);
+    clock_t start_clock = clock();
 
     while (tx_data->bytes_sent == tx_data->data_packet_max_size)
     {
@@ -443,7 +444,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
             block_overflow_multiplier++;
         }
 
-        printf("\rRead %d bytes to transmission buffer -> ", tx_data->latest_file_bytes_read);
+        printf("\r%.2f Read %d bytes to transmission buffer -> ", seconds_since_clock(start_clock), tx_data->latest_file_bytes_read);
 
         if (tx_data->latest_file_bytes_read <= 0)
         {
@@ -518,7 +519,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
         }
     }
 
-    printf("\nFile transmission complete.\n");
+    printf("\nFile transmission completed in %.2f.\n", seconds_since_clock(start_clock));
     return true;
 }
 
