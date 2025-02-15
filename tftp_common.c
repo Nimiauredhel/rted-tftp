@@ -417,7 +417,6 @@ bool tftp_await_acknowledgement(uint16_t block_number, OperationData_t *op_data)
 
 bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
 {
-    bool last_print_was_progress = false;
     uint64_t total_file_size;
     uint32_t total_block_count;
     uint8_t block_overflow_multiplier = 0;
