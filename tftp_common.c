@@ -430,7 +430,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
     tx_data->data_packet_ptr->data.opcode = htons(TFTP_DATA);
     tx_data->bytes_sent = tx_data->data_packet_max_size;
     printf("Beginning transmission of file with total size of %lu bytes, in %u blocks.\n", total_file_size, total_block_count);
-    clock_t start_clock = clock();
+    clock_gettime(CLOCK_MONOTONIC, &tx_data->start_clock);
 
     while (tx_data->bytes_sent == tx_data->data_packet_max_size)
     {
@@ -444,7 +444,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
             block_overflow_multiplier++;
         }
 
-        printf("\r[%.2fs] Read %d bytes to transmission buffer -> ", seconds_since_clock(start_clock), tx_data->latest_file_bytes_read);
+        printf("\r[%.2fs] Read %d bytes to transmission buffer -> ", seconds_since_clock(tx_data->start_clock), tx_data->latest_file_bytes_read);
 
         if (tx_data->latest_file_bytes_read <= 0)
         {
@@ -519,7 +519,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
         }
     }
 
-    printf("\nFile transmission completed in %.2fs.\n", seconds_since_clock(start_clock));
+    printf("\nFile transmission completed in %.2fs.\n", seconds_since_clock(tx_data->start_clock));
     return true;
 }
 
@@ -531,6 +531,7 @@ bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
 
     tx_data->current_block_number = 1;
     printf("Beginning file reception.\n");
+    clock_gettime(CLOCK_MONOTONIC, &tx_data->start_clock);
 
     do
     {
@@ -544,12 +545,12 @@ bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
             {
                 if (ntohs(tx_data->data_packet_ptr->opcode) == TFTP_ERROR)
                 {
-                    printf("Received error message (code %u) from peer with message: %s\n", ntohs(tx_data->data_packet_ptr->error.error_code), tx_data->data_packet_ptr->error.error_message);
+                    printf("\nReceived error message (code %u) from peer with message: %s\n", ntohs(tx_data->data_packet_ptr->error.error_code), tx_data->data_packet_ptr->error.error_message);
                     return false;
                 }
                 else if  (ntohs(tx_data->data_packet_ptr->opcode) == TFTP_DATA && ntohs(tx_data->data_packet_ptr->data.block_number) == tx_data->current_block_number)
                 {
-                    printf ("Block #%u received!\n", tx_data->current_block_number);
+                    printf ("[%0.2fs] Block #%u received! -> ", seconds_since_clock(tx_data->start_clock), tx_data->current_block_number);
                     bytes_written = fwrite(tx_data->data_packet_ptr->data.data, 1, tx_data->bytes_received - sizeof(Packet_t), tx_data->file); 
 
                     if (bytes_written <= 0)
@@ -572,17 +573,17 @@ bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
             {
                 perror("Receive attempt failed");
                 tx_data->resend_counter++;
-                printf ("Block #%u still not received, resending acknowledgement of block #%u.\n", tx_data->current_block_number, prev_block_number);
+                printf ("[%0.2fs] Block #%u still not received, resending acknowledgement of block #%u.\n", seconds_since_clock(tx_data->start_clock), tx_data->current_block_number, prev_block_number);
             }
             else
             {
-                printf ("Block #%u still not received, max retransmission limit reached. Aborting.\n", tx_data->current_block_number);
+                printf ("[%0.2fs] Block #%u still not received, max retransmission limit reached. Aborting.\n", seconds_since_clock(tx_data->start_clock), tx_data->current_block_number);
                 return false;
             }
         }
     }
     while (tx_data->bytes_received == tx_data->data_packet_max_size);
 
-    printf("File reception complete.\n");
+    printf("File reception complete in %0.2fs.\n", seconds_since_clock(tx_data->start_clock));
     return true;
 }

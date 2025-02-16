@@ -17,6 +17,6 @@
 extern bool should_terminate;
 
 int random_range(int min, int max);
-float seconds_since_clock(clock_t start_clock);
+float seconds_since_clock(struct timespec start_clock);
 
 #endif

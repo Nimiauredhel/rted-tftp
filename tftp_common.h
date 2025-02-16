@@ -130,6 +130,7 @@ typedef struct TransferData
     int32_t bytes_sent;
     int32_t latest_file_bytes_read;
     uint64_t total_file_bytes_transmitted;
+    struct timespec start_clock;
     FILE *file;
     Packet_t *response_packet_ptr;
     Packet_t *data_packet_ptr;
