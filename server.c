@@ -20,29 +20,6 @@ static void server_init_storage(void)
     }
 }
 
-static bool server_drop_root_privilege(void)
-{
-    printf("Current gid: %u uid: %u\n", getgid(), getuid());
-    printf("Current egid: %u euid: %u\n", getegid(), geteuid());
-
-    if (setgid(getgid()) == -1)
-    {
-        perror("failed dropping group privilege");
-        return false;
-    }
-
-    if (setuid(getuid()) == -1)
-    {
-        perror("failed dropping user privilege");
-        return false;
-    }
-
-    printf("Successfully dropped root privilege.\n");
-    printf("Current gid: %u uid: %u\n", getgid(), getuid());
-    printf("Current egid: %u euid: %u\n", getegid(), geteuid());
-    return true;
-}
-
 static void server_init_random(void)
 {
     usleep(random_range(9876, 54321));
@@ -279,18 +256,11 @@ void server_start(void)
 {
     ServerListenerData_t data = {0};
 
-    // initialize requests socket & associated data storage.
-    // note: this step requires root privilege
     is_server = true;
+
+    server_init_storage();
+    server_init_random();
+
     init_server_listener_data(&data);
-
-    // we drop root privilege before file operations
-    // to avoid assigning root ownership
-    if (server_drop_root_privilege())
-    {
-        server_init_storage();
-        server_init_random();
-
-        server_listener_loop(&data);
-    }
+    server_listener_loop(&data);
 }
