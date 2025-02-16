@@ -20,7 +20,30 @@ static void server_init_storage(void)
     }
 }
 
-void server_init_random(void)
+static bool server_drop_root_privilege(void)
+{
+    printf("Current gid: %u uid: %u\n", getgid(), getuid());
+    printf("Current egid: %u euid: %u\n", getegid(), geteuid());
+
+    if (setgid(getgid()) == -1)
+    {
+        perror("failed dropping group privilege");
+        return false;
+    }
+
+    if (setuid(getuid()) == -1)
+    {
+        perror("failed dropping user privilege");
+        return false;
+    }
+
+    printf("Successfully dropped root privilege.\n");
+    printf("Current gid: %u uid: %u\n", getgid(), getuid());
+    printf("Current egid: %u euid: %u\n", getegid(), geteuid());
+    return true;
+}
+
+static void server_init_random(void)
 {
     usleep(random_range(9876, 54321));
 }
@@ -198,67 +221,76 @@ static void init_server_listener_data(ServerListenerData_t *data)
     explicit_bzero(data->request_buffer, data->buffer_size);
 }
 
-static void server_listener_loop(void)
+static void server_listener_loop(ServerListenerData_t *data)
 {
     static const char *received_packet_message_format = "Received %s packet in requests socket.\n";
-    ServerListenerData_t data = {0};
-
-    init_server_listener_data(&data);
 
     while(!should_terminate)
     {
         printf("Awaiting requests.\n");
 
-        data.bytes_received = recvfrom(data.requests_socket, data.request_buffer, data.buffer_size, 0, (struct sockaddr*)&(data.client_address), &(data.client_address_length));
+        data->bytes_received = recvfrom(data->requests_socket, data->request_buffer, data->buffer_size, 0, (struct sockaddr*)&(data->client_address), &(data->client_address_length));
 
         if (should_terminate) break;
 
-        if(data.bytes_received < 0)
+        if(data->bytes_received < 0)
         {
             // TODO: extract error handling function plz
             perror("Failed to receive bytes");
             continue;
         }
-        else if (data.bytes_received == 0)
+        else if (data->bytes_received == 0)
         {
             printf("Received zero bytes.\n");
             continue;
         }
 
-        printf("Received %lu bytes. Contents:\n", data.bytes_received);
-        fwrite(data.request_buffer->request.contents, sizeof(char), data.bytes_received, stdout);
+        printf("Received %lu bytes. Contents:\n", data->bytes_received);
+        fwrite(data->request_buffer->request.contents, sizeof(char), data->bytes_received, stdout);
         printf("\n");
 
-        data.incoming_opcode = ntohs(data.request_buffer->opcode);
+        data->incoming_opcode = ntohs(data->request_buffer->opcode);
 
-        switch (data.incoming_opcode)
+        switch (data->incoming_opcode)
         {
             // *** Invalid (non-request) opcodes: send an error and move on
             case TFTP_DATA:
             case TFTP_ACK:
             case TFTP_ERROR:
             default:
-                fprintf(stderr, received_packet_message_format, tftp_opcode_strings[data.incoming_opcode]);
-                tftp_send_error(TFTP_ERROR_ILLEGAL_OPERATION, "received packet in requests socket with opcode ", tftp_opcode_strings[data.incoming_opcode], data.requests_socket, &data.client_address, data.client_address_length); 
+                fprintf(stderr, received_packet_message_format, tftp_opcode_strings[data->incoming_opcode]);
+                tftp_send_error(TFTP_ERROR_ILLEGAL_OPERATION, "received packet in requests socket with opcode ", tftp_opcode_strings[data->incoming_opcode], data->requests_socket, &data->client_address, data->client_address_length); 
                 break;
             // *** Standard request opcodes: parse and begin operation
             case TFTP_RRQ:
             case TFTP_WRQ:
             case TFTP_DRQ:
-                printf(received_packet_message_format, tftp_opcode_strings[data.incoming_opcode]);
-                server_start_operation(server_parse_request_data(data.request_buffer, data.bytes_received, data.client_address));
+                printf(received_packet_message_format, tftp_opcode_strings[data->incoming_opcode]);
+                server_start_operation(server_parse_request_data(data->request_buffer, data->bytes_received, data->client_address));
                 break;
         }
 
         // buffer was used in this iteration - clear it to zero
-        explicit_bzero(data.request_buffer, data.buffer_size);
+        explicit_bzero(data->request_buffer, data->buffer_size);
     }
 }
 
 void server_start(void)
 {
+    ServerListenerData_t data = {0};
+
+    // initialize requests socket & associated data storage.
+    // note: this step requires root privilege
     is_server = true;
-    server_init_storage();
-    server_init_random();
-    server_listener_loop();
+    init_server_listener_data(&data);
+
+    // we drop root privilege before file operations
+    // to avoid assigning root ownership
+    if (server_drop_root_privilege())
+    {
+        server_init_storage();
+        server_init_random();
+
+        server_listener_loop(&data);
+    }
 }
