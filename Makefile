@@ -1,33 +1,44 @@
+SOURCE=*.c
 PROGRAM=program
+EXE_NAME=$(PROGRAM).o
 ARGS=
+BUILD_DIR=build/
+EXE_PATH=$(BUILD_DIR)$(EXE_NAME)
+DEFAULT_FLAGS=
+STRICT_FLAGS= $(DEFAULT_FLAGS) -std=c99 -Wall -pedantic -Wextra
+DEBUG_FLAGS= $(STRICT_FLAGS) -o0
 
 default:
-	gcc *.c -o $(PROGRAM).o
-	sudo setcap 'CAP_NET_BIND_SERVICE=ep' $(PROGRAM).o
+	gcc $(SOURCE) $(DEFAULT_FLAGS) -o $(EXE_PATH)
+	make post-build
                                      
 strict:                              
-	bear -- gcc *.c -std=c99 -Wall -pedantic -Wextra -o $(PROGRAM).o
-	sudo setcap 'CAP_NET_BIND_SERVICE=ep' $(PROGRAM).o
+	bear -- gcc $(SOURCE) $(STRICT_FLAGS) -o $(EXE_PATH)
+	make post-build
                     
 debug:              
-	gcc *.c -std=c99 -Wall -pedantic -Wextra -g -o0 -o $(PROGRAM).o
-	sudo setcap 'CAP_NET_BIND_SERVICE=ep' $(PROGRAM).o
+	gcc $(SOURCE) $(DEBUG_FLAGS) -o $(EXE_PATH)
+	make post-build
 
 run:
-	./$(PROGRAM).o $(ARGS)
+	 $(EXE_PATH) $(ARGS)
 
 andrun:
-	gcc *.c -o $(PROGRAM).o
-	sudo setcap 'CAP_NET_BIND_SERVICE=ep' $(PROGRAM).o
-	./$(PROGRAM).o $(ARGS)
+	make default
+	make run
 
 gdb:
-	gdb ./$(PROGRAM).o $(ARGS)
+	gdb $(EXE_PATH) $(ARGS)
 
 valgrind:
-	valgrind -s --leak-check=yes --track-origins=yes ./$(PROGRAM).o $(ARGS)
+	valgrind -s --leak-check=yes --track-origins=yes $(EXE_PATH) $(ARGS)
 
 clean:
-	rm -f $(PROGRAM).o
+	rm -f $(EXE_PATH)
+	rm -f $(BUILD_DIR)*.sh
 	rm -f compile_commands.json
+
+post-build:
+	sudo setcap 'CAP_NET_BIND_SERVICE=ep' $(EXE_PATH)
+	cp bash_gui/* $(BUILD_DIR)
 
