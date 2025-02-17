@@ -57,6 +57,12 @@ static bool server_delete_file(OperationData_t *op_data)
 
 static void server_start_operation(OperationData_t *op_data)
 {
+    if (op_data == NULL)
+    {
+        printf("Operation data null - aborting.\n");
+        return;
+    }
+
     TransferData_t *tx_data;
 
     switch(op_data->operation_id)
