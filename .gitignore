@@ -1,6 +1,5 @@
 .cache/
 build/
-bash_gui/
 backup/
 temp/
 todo
