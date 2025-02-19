@@ -44,6 +44,7 @@ clean:
 	rm -f compile_commands.json
 
 post-build:
+	mkdir $(BUILD_DIR)
 	sudo setcap 'CAP_NET_BIND_SERVICE=ep' $(EXE_PATH)
 	cp bash_tui/* $(BUILD_DIR)
 	echo exe_name=$(EXE_NAME) > $(BUILD_DIR)exe_name.sh
