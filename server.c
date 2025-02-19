@@ -57,7 +57,12 @@ static bool server_delete_file(OperationData_t *op_data)
 
 static void server_start_operation(OperationData_t *op_data)
 {
-    if (op_data == NULL)
+    if (should_terminate)
+    {
+        printf("User requested termination - aborting.\n");
+        return;
+    }
+    else if (op_data == NULL)
     {
         printf("Operation data null - aborting.\n");
         return;
@@ -269,4 +274,6 @@ void server_start(void)
 
     init_server_listener_data(&data);
     server_listener_loop(&data);
+
+    printf("\nServer terminating.\n");
 }

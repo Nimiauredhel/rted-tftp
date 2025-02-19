@@ -1,5 +1,12 @@
 #include "tftp_common.h"
 
+#define CHECK_SIGTERM_DURING_TRANSFER if (should_terminate) { \
+        printf("User requested termination - aborting.\n"); \
+        tftp_send_error(TFTP_ERROR_UNDEFINED, \
+        is_server ? "Server program terminated" : "Client program terminated", \
+        NULL, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length); \
+        return false; } \
+
 const uint8_t tftp_max_retransmit_count = 5;
 const uint32_t tftp_ack_timeout = 1000000;
 const uint32_t tftp_data_timeout = 1000000;
@@ -417,6 +424,8 @@ bool tftp_await_acknowledgement(uint16_t block_number, OperationData_t *op_data)
 
 bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
 {
+    CHECK_SIGTERM_DURING_TRANSFER
+
     uint64_t total_file_size;
     uint32_t total_block_count;
     uint8_t block_overflow_multiplier = 0;
@@ -434,6 +443,8 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
 
     while (tx_data->bytes_sent == tx_data->data_packet_max_size)
     {
+        CHECK_SIGTERM_DURING_TRANSFER
+
         tx_data->current_block_number++;
         tx_data->resend_counter = 0;
         tx_data->data_packet_ptr->data.block_number = htons(tx_data->current_block_number);
@@ -456,6 +467,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
             else
             {
                 perror("Failed to read from file");
+                tftp_send_error(TFTP_ERROR_UNDEFINED, "File error", NULL, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
                 return false;
             }
         }
@@ -466,11 +478,14 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
 
         while (tx_data->resend_counter < tftp_max_retransmit_count)
         {
+            CHECK_SIGTERM_DURING_TRANSFER
+
             tx_data->bytes_sent = sendto(op_data->data_socket, tx_data->data_packet_ptr, (sizeof(Packet_t) + tx_data->latest_file_bytes_read), 0, (struct sockaddr *)&(op_data->peer_address), op_data->peer_address_length);
 
             if (tx_data->bytes_sent < 0)
             {
                 perror("Failed to send packet");
+                tftp_send_error(TFTP_ERROR_UNDEFINED, "Socket tx error", NULL, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
                 return false;
             }
 
@@ -493,6 +508,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
                 else
                 {
                     perror("Failed to receive packet");
+                    tftp_send_error(TFTP_ERROR_UNDEFINED, "Socket rx error", NULL, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
                     return false;
                 }
             }
@@ -511,6 +527,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
             if (tx_data->resend_counter > tftp_max_retransmit_count)
             {
                 printf ("\nBlock #%u unacknowledged and retry limit reached. Aborting.\n", tx_data->current_block_number);
+                tftp_send_error(TFTP_ERROR_UNDEFINED, "Timed out waiting for acknowledgement", NULL, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
                 return false;
             }
 
@@ -525,6 +542,8 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
 
 bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
 {
+    CHECK_SIGTERM_DURING_TRANSFER
+
     bool received = false;
     uint16_t prev_block_number = 0;
     ssize_t bytes_written = 0;
@@ -535,6 +554,8 @@ bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
 
     do
     {
+        CHECK_SIGTERM_DURING_TRANSFER
+
         received = false;
 
         while (!received)
@@ -578,6 +599,7 @@ bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
             else
             {
                 printf ("[%0.2fs] Block #%u still not received, max retransmission limit reached. Aborting.\n", seconds_since_clock(tx_data->start_clock), tx_data->current_block_number);
+                tftp_send_error(TFTP_ERROR_UNDEFINED, "Timed out waiting for data packet", NULL, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
                 return false;
             }
         }

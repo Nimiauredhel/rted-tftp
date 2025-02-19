@@ -21,7 +21,10 @@ debug:
 	make post-build
 
 run:
-	 $(EXE_PATH) $(ARGS)
+	 cd $(BUILD_DIR); ./$(EXE_NAME) $(ARGS)
+
+run-tui:
+	cd $(BUILD_DIR); bash start.sh
 
 andrun:
 	make default
@@ -40,6 +43,6 @@ clean:
 
 post-build:
 	sudo setcap 'CAP_NET_BIND_SERVICE=ep' $(EXE_PATH)
-	cp bash_gui/* $(BUILD_DIR)
+	cp bash_tui/* $(BUILD_DIR)
 	echo exe_name=$(EXE_NAME) > $(BUILD_DIR)exe_name.sh
 
