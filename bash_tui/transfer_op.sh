@@ -17,5 +17,5 @@ block_size=$(echo "$value" | sed -n 3p)
 
 dialog --title "$client_title" --infobox "Running..." 4 24
 
-script -q -c "sleep 0.1; ./$exe_name $op_mode $peer_ip $file_name $transfer_mode $block_size;" | tee -a $outfile | dialog --progressbox "$client_title" 32 60
+script -q -c "sleep 0.1; ./$exe_name $op_mode $peer_ip $file_name $transfer_mode $block_size;" | tee -a $outfile | dialog --progressbox "$client_title" 32 80
 return_val=$?

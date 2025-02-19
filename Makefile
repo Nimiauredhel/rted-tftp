@@ -20,9 +20,11 @@ debug:
 	gcc $(SOURCE) $(DEBUG_FLAGS) -o $(EXE_PATH)
 	make post-build
 
+.ONESHELL:
 run:
 	 cd $(BUILD_DIR); ./$(EXE_NAME) $(ARGS)
 
+.ONESHELL:
 run-tui:
 	cd $(BUILD_DIR); bash start.sh
 

@@ -13,5 +13,5 @@ dialog --title "$client_title" --infobox "Running..." 4 24
 peer_ip=$(echo "$value" | sed -n 1p)
 file_name=$(echo "$value" | sed -n 2p)
 
-script -q -c "sleep 0.1; ./$exe_name $op_mode $peer_ip $file_name;" | tee -a $outfile | dialog --progressbox "$client_title" 32 60
+script -q -c "sleep 0.1; ./$exe_name $op_mode $peer_ip $file_name;" | tee -a $outfile | dialog --progressbox "$client_title" 32 80
 return_val=$?

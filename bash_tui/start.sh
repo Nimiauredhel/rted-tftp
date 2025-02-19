@@ -58,7 +58,7 @@ start_operation()
 
     echo "
     Press any key to quit." >> $outfile
-    dialog --title "$app_title" --infobox "$(tail -n 10 $outfile)" 24 60
+    dialog --title "$app_title" --infobox "$(tail -n 10 $outfile)" 24 80
 
     rm $outfile
 
@@ -76,4 +76,6 @@ do
     result=$?
 done
 
+clear
+reset
 echo Goodbye!
