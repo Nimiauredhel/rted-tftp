@@ -22,7 +22,6 @@ return_val=0
 # check if dialog is installed
 dialog &> /dev/null
 result=$?
-echo $result
 if [ $result != 0 ]; then
     echo "Dialog not installed. Please install Dialog! (Package name: dialog)."
     exit 1
