@@ -19,6 +19,15 @@ block_size=512
 outfile=output-$$
 return_val=0
 
+# check if dialog is installed
+dialog &> /dev/null
+result=$?
+echo $result
+if [ $result != 0 ]; then
+    echo "Dialog not installed. Please install Dialog! (Package name: dialog)."
+    exit 1
+fi
+
 # brief greeting
 dialog --title "$app_title" --infobox "Welcome to $app_title!" 4 40
 sleep 0.5
@@ -76,6 +85,5 @@ do
     result=$?
 done
 
-clear
 reset
 echo Goodbye!
