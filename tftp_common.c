@@ -21,8 +21,8 @@ TFTPCommonData_t tftp_common =
     .operation_modes =
     {
         { 2, "serve", "Serve storage folder to clients", "%s %s" },
-        { 4, "write", "Write named file to server", "%s %s <server ip> <filename>" },
-        { 4, "read", "Read named file from server", "%s %s <server ip> <filename>" },
+        { 4, "write", "Write named file to server", "%s %s <server ip> <filename> [transfer mode] [block size]" },
+        { 4, "read", "Read named file from server", "%s %s <server ip> <filename> [transfer mode] [block size]" },
         { 4, "delete", "Erase named file from server", "%s %s <server ip> <filename>" },
     },
     .transfer_mode_strings =

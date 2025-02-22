@@ -106,7 +106,7 @@ typedef struct OperationMode
     const uint8_t min_argument_count;
     const char input_string[TFTP_OPERATION_MODE_STRING_MAXLENGTH];
     const char description_string[32];
-    const char usage_format_string[32];
+    const char usage_format_string[64];
 
 } OperationMode_t;
 

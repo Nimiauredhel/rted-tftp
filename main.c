@@ -10,7 +10,7 @@ static void exit_bad_input(char *process_name);
 
 int main(int argc, char *argv[])
 {
-    printf("Welcome to Untitled TFTP App.\n");
+    printf("Welcome to Untitled TFTP App!\n");
 
     initialize_signal_handler();
     initialize_random_seed();
@@ -99,7 +99,7 @@ static int8_t get_selection_from_args(int argc, char *argv[])
                 }
                 else
                 {
-                    printf("Missing arguments for requested operation!\n Usage:\n   ");
+                    printf("Missing arguments for requested operation!\n Usage:\n ([] means optional)\n   ");
                     printf(tftp_common.operation_modes[i].usage_format_string, argv[0], tftp_common.operation_modes[i].input_string);
                     printf("\nTerminating.\n");
                     exit(EINVAL);
@@ -115,7 +115,7 @@ static int8_t get_selection_from_args(int argc, char *argv[])
 
 static void print_usage(const char* process_name)
 {
-    printf(" Usage:\n");
+    printf(" Usage:\n ([] means optional)\n");
 
     for (uint8_t i = 0; i < TFTP_OPERATION_MODES_COUNT; i++)
     {
@@ -127,7 +127,7 @@ static void print_usage(const char* process_name)
 
 static void exit_bad_input(char *process_name)
 {
-    printf("Invalid input!\n");
+    printf("Invalid input!");
     print_usage(process_name);
     printf("Terminating.\n");
     exit(EXIT_FAILURE);
