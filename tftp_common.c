@@ -266,18 +266,29 @@ void tftp_free_operation_data(OperationData_t *data)
 }
 
 /**
- * This function initializes a TransferData_t struct which is used during file transfers.
- * The same structure is used to handle both transmission and reception.
+ * This function initializes a pre-allocated TransferData_t struct,
+ * which is used during file transfers.
+ * The same structure is used to handle both transmission and reception operations.
  */
 bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *transfer_data, bool receiver)
 {
-    // TODO: null check input pointers
+    if (transfer_data == NULL)
+    {
+        printf("Passed null TransferData_t pointer! Aborting.\n");
+        tftp_send_error(TFTP_ERROR_UNDEFINED, "Internal server error", NULL, operation_data->data_socket, &operation_data->peer_address, operation_data->peer_address_length);
+        return false;
+    }
+
     explicit_bzero(transfer_data, sizeof(TransferData_t));
 
+    // receiving-end specific checks
     if (receiver)
     {
         transfer_data->file = fopen(operation_data->path, "rb");
 
+        // when trying to receive a file that already exists,
+        // it makes sense to notify our peer of the file's last modified date,
+        // so they can reason about requesting deletion to effectively overwrite it.
         if (transfer_data->file != NULL)
         {
             char timestamp[32];
@@ -304,11 +315,15 @@ bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *tr
         return false;
     }
 
+    // The TFTP default block size is 512 bytes, but we support the BLKSIZE extension.
+    // A value of 0 means that no BLKSIZE field was passed, so it is interpreted as the default value.
     if (operation_data->block_size == 0)
     {
         operation_data->block_size = TFTP_BLKSIZE_DEFAULT;
         printf("Block size unspecified, defaulting to %d bytes.\n", TFTP_BLKSIZE_DEFAULT);
     }
+    // Else, we apply the requested block size, given that it fits within the permitted range.
+    // If it exceeds the permitted range we simply reject the request.
     else if (operation_data->block_size < TFTP_BLKSIZE_MIN || operation_data->block_size > TFTP_BLKSIZE_MAX)
     {
         printf("Invalid block size specified");
