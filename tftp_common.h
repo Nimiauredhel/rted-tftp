@@ -5,11 +5,15 @@
 #include "common.h"
 #include "networking_common.h"
 
-#define STORAGE_PATH "storage/"
+#define TFTP_OPERATION_MODES_COUNT 4
+#define TFTP_OPERATION_MODE_STRING_MAXLENGTH 8
 
-#define OPERATION_MODES_COUNT 4
-#define OPERATION_MODES_MAX_LENGTH 8
-#define TFTP_MODES_COUNT 3
+#define TFTP_TRANSFER_MODES_COUNT 3
+#define TFTP_TRANSFER_MODE_STRING_MAXLENGTH 9
+
+#define TFTP_OPCODES_COUNT 7
+#define TFTP_OPCODE_STRING_MAXLENGTH 6
+
 #define TFTP_BLKSIZE_STRING "blksize"
 #define TFTP_FILENAME_MAX 255
 #define TFTP_ERROR_MESSAGE_MAX_LENGTH 128
@@ -100,7 +104,7 @@ typedef enum OperationId
 typedef struct OperationMode
 {
     const uint8_t min_argument_count;
-    const char input_string[OPERATION_MODES_MAX_LENGTH];
+    const char input_string[TFTP_OPERATION_MODE_STRING_MAXLENGTH];
     const char description_string[32];
     const char usage_format_string[32];
 
@@ -136,15 +140,18 @@ typedef struct TransferData
     Packet_t *data_packet_ptr;
 } TransferData_t;
 
-extern const uint8_t tftp_max_retransmit_count;
-extern const uint32_t tftp_ack_timeout;
-extern const uint32_t tftp_data_timeout;
-extern const char tftp_mode_strings[TFTP_MODES_COUNT][9];
-extern const char tftp_opcode_strings[7][6];
+typedef struct TFTPCommonData
+{
+    bool is_server;
+    const uint8_t max_retry_count;
+    const uint32_t data_timeout;
+    const uint32_t response_timeout;
+    const OperationMode_t operation_modes[TFTP_OPERATION_MODES_COUNT];
+    const char transfer_mode_strings[TFTP_TRANSFER_MODES_COUNT][TFTP_TRANSFER_MODE_STRING_MAXLENGTH];
+    const char opcode_strings[TFTP_OPCODES_COUNT][TFTP_OPCODE_STRING_MAXLENGTH];
+} TFTPCommonData_t;
 
-extern const OperationMode_t tftp_operation_modes[];
-
-extern bool is_server;
+extern TFTPCommonData_t tftp_common;
 
 bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *transfer_data, bool receiver);
 void tftp_free_transfer_data(TransferData_t *data);

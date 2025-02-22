@@ -1,43 +1,47 @@
 #include "tftp_common.h"
 
-#define CHECK_SIGTERM_DURING_TRANSFER if (should_terminate) { \
+// This macro checks for a user termination signal at multiple points during file transfer,
+// to ensure a timely response to user input without adding too much clutter.
+#define CHECK_SIGTERM_DURING_TRANSFER \
+        if (should_terminate) { \
         printf("User requested termination - aborting.\n"); \
         tftp_send_error(TFTP_ERROR_UNDEFINED, \
-        is_server ? "Server program terminated" : "Client program terminated", \
+        tftp_common.is_server ? "Server program terminated" : "Client program terminated", \
         NULL, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length); \
         return false; } \
 
-const uint8_t tftp_max_retransmit_count = 5;
-const uint32_t tftp_ack_timeout = 1000000;
-const uint32_t tftp_data_timeout = 1000000;
-
-const char tftp_mode_strings[TFTP_MODES_COUNT][9] =
+// This struct holds data common to all client and server operations;
+// the 'is_server' flag is the only non-const field, as it relies on input args.
+TFTPCommonData_t tftp_common =
 {
-    "octet",
-    "netascii",
-    "mail"
+    .is_server = false,
+    .max_retry_count = 5,
+    .data_timeout = 100000,
+    .response_timeout = 1000000,
+    .operation_modes =
+    {
+        { 2, "serve", "Serve storage folder to clients", "%s %s" },
+        { 4, "write", "Write named file to server", "%s %s <server ip> <filename>" },
+        { 4, "read", "Read named file from server", "%s %s <server ip> <filename>" },
+        { 4, "delete", "Erase named file from server", "%s %s <server ip> <filename>" },
+    },
+    .transfer_mode_strings =
+    {
+        "octet",
+        "netascii",
+        "mail"
+    },
+    .opcode_strings =
+    {
+        "NONE",
+        "RRQ",
+        "WRQ",
+        "DATA",
+        "ACK",
+        "ERROR",
+        "DRQ",
+    },
 };
-
-const char tftp_opcode_strings[7][6] =
-{
-    "NONE",
-    "RRQ",
-    "WRQ",
-    "DATA",
-    "ACK",
-    "ERROR",
-    "DRQ",
-};
-
-const OperationMode_t tftp_operation_modes[OPERATION_MODES_COUNT] =
-{
-    { 2, "serve", "Serve storage folder to clients", "%s %s" },
-    { 4, "write", "Write named file to server", "%s %s <server ip> <filename>" },
-    { 4, "read", "Read named file from server", "%s %s <server ip> <filename>" },
-    { 4, "delete", "Erase named file from server", "%s %s <server ip> <filename>" },
-};
-
-bool is_server = false;
 
 void tftp_free_transfer_data(TransferData_t *data)
 {
@@ -203,9 +207,9 @@ OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockad
         {
             data->transfer_mode = TFTP_MODE_UNSPECIFIED;
 
-            for (int8_t idx = 0; idx < TFTP_MODES_COUNT; idx++)
+            for (int8_t idx = 0; idx < TFTP_TRANSFER_MODES_COUNT; idx++)
             {
-                if (strcasecmp(mode_string, tftp_mode_strings[idx]) == 0)
+                if (strcasecmp(mode_string, tftp_common.transfer_mode_strings[idx]) == 0)
                 {
                     data->transfer_mode = (TFTPTransferMode_t)idx;
                     break;
@@ -310,8 +314,8 @@ void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_pt
 
     while (bind_result < 0)
     {
-        rx_port = random_range(is_server ? SERVER_DATA_PORT_MIN : CLIENT_DATA_PORT_MIN,
-                is_server ? SERVER_DATA_PORT_MAX : CLIENT_DATA_PORT_MAX);
+        rx_port = random_range(tftp_common.is_server ? SERVER_DATA_PORT_MIN : CLIENT_DATA_PORT_MIN,
+                tftp_common.is_server ? SERVER_DATA_PORT_MAX : CLIENT_DATA_PORT_MAX);
         address_ptr->sin_port = htons(rx_port);
         bind_result = bind(*socket_ptr,
                 (struct sockaddr*)address_ptr,
@@ -388,7 +392,7 @@ bool tftp_await_acknowledgement(uint16_t block_number, OperationData_t *op_data)
     // dynamically allocating the packet to allow extra space for error packet message field
     Packet_t *incoming_packet = malloc(TFTP_RESPONSE_PACKET_MAX_SIZE);
 
-    while (retry_counter < tftp_max_retransmit_count)
+    while (retry_counter < tftp_common.max_retry_count)
     {
         retry_counter++;
         printf("Awaiting ACK packet (attempt #%d).\n", retry_counter);
@@ -416,7 +420,7 @@ bool tftp_await_acknowledgement(uint16_t block_number, OperationData_t *op_data)
         }
     }
 
-    printf("ACK reception retry limit (%u) reached.\n", tftp_max_retransmit_count);
+    printf("ACK reception retry limit (%u) reached.\n", tftp_common.max_retry_count);
 
     free(incoming_packet);
     return false;
@@ -476,7 +480,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
             printf("Sending final block: %u/%u.\n", tx_data->current_block_number + (UINT16_MAX * block_overflow_multiplier), total_block_count);
         }
 
-        while (tx_data->resend_counter < tftp_max_retransmit_count)
+        while (tx_data->resend_counter < tftp_common.max_retry_count)
         {
             CHECK_SIGTERM_DURING_TRANSFER
 
@@ -524,7 +528,7 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
                 break;
             }
 
-            if (tx_data->resend_counter > tftp_max_retransmit_count)
+            if (tx_data->resend_counter > tftp_common.max_retry_count)
             {
                 printf ("\nBlock #%u unacknowledged and retry limit reached. Aborting.\n", tx_data->current_block_number);
                 tftp_send_error(TFTP_ERROR_UNDEFINED, "Timed out waiting for acknowledgement", NULL, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length);
@@ -590,7 +594,7 @@ bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
                     received = true;
                 }
             }
-            else if (tx_data->resend_counter < tftp_max_retransmit_count)
+            else if (tx_data->resend_counter < tftp_common.max_retry_count)
             {
                 perror("Receive attempt failed");
                 tx_data->resend_counter++;

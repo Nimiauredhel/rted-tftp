@@ -11,10 +11,12 @@ DEBUG_FLAGS= $(STRICT_FLAGS) -g -o0
 default:
 	gcc $(SOURCE) $(DEFAULT_FLAGS) -o $(EXE_PATH)
 	make post-build
+	make setcap
                                      
 strict:                              
 	bear -- gcc $(SOURCE) $(STRICT_FLAGS) -o $(EXE_PATH)
 	make post-build
+	make setcap
                     
 debug:              
 	gcc $(SOURCE) $(DEBUG_FLAGS) -o $(EXE_PATH)
@@ -33,19 +35,21 @@ andrun:
 	make run
 
 gdb:
-	gdb $(EXE_PATH) $(ARGS)
+	cd $(BUILD_DIR); gdb ./$(EXE_NAME) $(ARGS)
 
 valgrind:
-	valgrind -s --leak-check=yes --track-origins=yes $(EXE_PATH) $(ARGS)
+	cd $(BUILD_DIR); valgrind -s --leak-check=yes --leak-check=full --show-leak-kinds=all --track-origins=yes ./$(EXE_NAME) $(ARGS)
 
 clean:
 	rm -f $(EXE_PATH)
 	rm -f $(BUILD_DIR)*.sh
 	rm -f compile_commands.json
 
+setcap:
+	sudo setcap 'CAP_NET_BIND_SERVICE=ep' $(EXE_PATH)
+
 post-build:
 	mkdir $(BUILD_DIR)
-	sudo setcap 'CAP_NET_BIND_SERVICE=ep' $(EXE_PATH)
 	cp bash_tui/* $(BUILD_DIR)
 	echo exe_name=$(EXE_NAME) > $(BUILD_DIR)exe_name.sh
 

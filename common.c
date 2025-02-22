@@ -1,19 +1,24 @@
 #include "common.h"
 
-static bool random_was_seeded = false;
-
 bool should_terminate = false;
+
+static bool random_was_seeded = false;
 
 void initialize_signal_handler(void)
 {
     should_terminate = false;
 
     struct sigaction action;
-    memset(&action, 0, sizeof(action));
+    explicit_bzero(&action, sizeof(action));
     action.sa_handler = signal_handler;
     sigaction(SIGINT, &action, NULL);
     sigaction(SIGTERM, &action, NULL);
     sigaction(SIGHUP, &action, NULL);
+}
+
+void initialize_random_seed(void)
+{
+    usleep(random_range(1234, 5678));
 }
 
 void signal_handler(int signum)

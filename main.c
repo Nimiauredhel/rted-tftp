@@ -13,8 +13,10 @@ int main(int argc, char *argv[])
     printf("Welcome to Untitled TFTP App.\n");
 
     initialize_signal_handler();
+    initialize_random_seed();
 
     int8_t selection = get_selection_from_args(argc, argv);
+    tftp_common.is_server = false;
 
     if (selection < 0)
     {
@@ -22,6 +24,7 @@ int main(int argc, char *argv[])
     }
     else if (selection == 0)
     {
+        tftp_common.is_server = true;
         server_start();
     }
     else if (argc > 3)
@@ -86,18 +89,18 @@ static int8_t get_selection_from_args(int argc, char *argv[])
 
     if (argc > 1)
     {
-        for (uint8_t i = 0; i < OPERATION_MODES_COUNT; i++)
+        for (uint8_t i = 0; i < TFTP_OPERATION_MODES_COUNT; i++)
         {
-            if (0 == strncmp(argv[1], tftp_operation_modes[i].input_string, OPERATION_MODES_MAX_LENGTH))
+            if (0 == strncmp(argv[1], tftp_common.operation_modes[i].input_string, TFTP_OPERATION_MODE_STRING_MAXLENGTH))
             {
-                if (argc >= tftp_operation_modes[i].min_argument_count)
+                if (argc >= tftp_common.operation_modes[i].min_argument_count)
                 {
                     selection = i;
                 }
                 else
                 {
                     printf("Missing arguments for requested operation!\n Usage:\n   ");
-                    printf(tftp_operation_modes[i].usage_format_string, argv[0], tftp_operation_modes[i].input_string);
+                    printf(tftp_common.operation_modes[i].usage_format_string, argv[0], tftp_common.operation_modes[i].input_string);
                     printf("\nTerminating.\n");
                     exit(EINVAL);
                 }
@@ -114,10 +117,10 @@ static void print_usage(const char* process_name)
 {
     printf(" Usage:\n");
 
-    for (uint8_t i = 0; i < OPERATION_MODES_COUNT; i++)
+    for (uint8_t i = 0; i < TFTP_OPERATION_MODES_COUNT; i++)
     {
-        printf(" ~ %s - \n   ", tftp_operation_modes[i].description_string);
-        printf(tftp_operation_modes[i].usage_format_string, process_name, tftp_operation_modes[i].input_string);
+        printf(" ~ %s - \n   ", tftp_common.operation_modes[i].description_string);
+        printf(tftp_common.operation_modes[i].usage_format_string, process_name, tftp_common.operation_modes[i].input_string);
         printf("\n");
     }
 }

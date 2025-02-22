@@ -38,7 +38,7 @@ static bool send_request_packet(OperationData_t *data)
             exit(EXIT_FAILURE);
         }
 
-         transfer_mode_len = strlen(tftp_mode_strings[data->transfer_mode]);
+         transfer_mode_len = strlen(tftp_common.transfer_mode_strings[data->transfer_mode]);
 
         if (data->block_size > 0 && data->block_size != TFTP_BLKSIZE_DEFAULT)
         {
@@ -76,6 +76,7 @@ static bool send_request_packet(OperationData_t *data)
         case TFTP_OPERATION_UNDEFINED:
         case TFTP_OPERATION_HANDLE_DELETE:
             printf("Invalid operation id: %d", data->operation_id);
+            free(request_packet_ptr);
             tftp_free_operation_data(data);
             exit(EXIT_FAILURE);
             break;
@@ -89,7 +90,7 @@ static bool send_request_packet(OperationData_t *data)
     if (data->operation_id != TFTP_OPERATION_REQUEST_DELETE)
     {
         // writing transfer mode + terminating 0
-        memcpy(request_packet_ptr->request.contents + contents_idx, tftp_mode_strings[data->transfer_mode], transfer_mode_len); 
+        memcpy(request_packet_ptr->request.contents + contents_idx, tftp_common.transfer_mode_strings[data->transfer_mode], transfer_mode_len); 
         contents_idx += transfer_mode_len;
 
         // if custom blocksize specified, we must add those fields as well
@@ -114,6 +115,10 @@ static bool send_request_packet(OperationData_t *data)
     printf("\n");*/
 
     ssize_t bytes_sent = sendto(data->data_socket, request_packet_ptr, sizeof(Packet_t) + contents_size, 0, (struct sockaddr *)&(data->peer_address), data->peer_address_length);
+
+    // blanking and freeing the request buffer here regardless of outcome
+    explicit_bzero(request_packet_ptr, full_packet_size);
+    free(request_packet_ptr);
 
     if (bytes_sent <= 0)
     {
