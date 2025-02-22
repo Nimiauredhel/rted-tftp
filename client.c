@@ -1,5 +1,9 @@
 #include "client.h"
 
+/**
+ * Generates a request packet from input OperationData_t
+ * and sends it to the given TFTP server.
+ */
 static bool send_request_packet(OperationData_t *data)
 {
     static const uint8_t blocksize_blksize_str_len = 8;
@@ -106,14 +110,6 @@ static bool send_request_packet(OperationData_t *data)
         }
     }
 
-    // TODO: remove this debug code
-    /*FILE *request_log = fopen("last_request_contents", "w");
-    printf("Sending %s request. Contents:\n", data->request_description);
-    fwrite(request_packet_ptr->request.contents, sizeof(char), contents_size, stdout);
-    fwrite(request_packet_ptr->request.contents, sizeof(char), contents_size, request_log);
-    fclose(request_log);
-    printf("\n");*/
-
     ssize_t bytes_sent = sendto(data->data_socket, request_packet_ptr, sizeof(Packet_t) + contents_size, 0, (struct sockaddr *)&(data->peer_address), data->peer_address_length);
 
     // blanking and freeing the request buffer here regardless of outcome
@@ -129,6 +125,11 @@ static bool send_request_packet(OperationData_t *data)
     return true;
 }
 
+/**
+ * Entry point for the TFTP client.
+ * Handles the request, acknowledgement and actual operation
+ * on a single thread, and terminates.
+ */
 bool client_start_operation(OperationData_t *op_data)
 {
     bool operation_outcome = false;

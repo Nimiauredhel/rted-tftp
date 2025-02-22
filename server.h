@@ -8,12 +8,20 @@
 #define SERVER_STORAGE_PATH "storage/"
 #define SERVER_MAX_CONNECTIONS 5
 
+/**
+ * Holds pointers to operation-relevant structs
+ * used by a single operation thread at a time.
+ */
 typedef struct ServerSlotData
 {
     OperationData_t *op_data_ptr;
     TransferData_t *tx_data_ptr;
 } ServerSlotData_t;
 
+/**
+ * Shared between the listener thread and operation threads, via mutex.
+ * Used to track concurrent operations.
+ */
 typedef struct ServerSlots
 {
     int free_slots_count;
@@ -23,6 +31,10 @@ typedef struct ServerSlots
     ServerSlotData_t slot_data[SERVER_MAX_CONNECTIONS];
 } ServerSlots_t;
 
+/**
+ * Used by the listener thread.
+ * Holds incoming request packet data and the requests socket handle.
+ */
 typedef struct ServerListenerData
 {
     int requests_socket;
@@ -35,18 +47,30 @@ typedef struct ServerListenerData
     Packet_t *request_buffer;
 } ServerListenerData_t;
 
+/**
+ * Struct encapsulating the two long-living server-side data structures.
+ */
 typedef struct ServerData
 {
     ServerListenerData_t listener;
     ServerSlots_t slots;
 } ServerData_t;
 
+/**
+ * Struct encapsulating all data required by a server-side operation thread ("task")
+ * to handle an entire client-requested operation and clean after itself.
+ */
 typedef struct ServerTaskArgs
 {
     int task_slot_idx;
     ServerSlots_t *slots;
 } ServerTaskArgs_t;
 
+/**
+ * Entry point for the TFTP server.
+ * Initializes the server state and launches the listener loop function.
+ * When the listener loop function returns, it cleans up the server data and returns to main.
+ */
 void server_start(void);
 
 #endif
