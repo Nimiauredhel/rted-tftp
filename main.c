@@ -14,7 +14,7 @@ static void exit_bad_input(char *process_name);
  */
 int main(int argc, char *argv[])
 {
-    printf("Welcome to Untitled TFTP App!\n");
+    printf("Welcome to stftpu, the simple TFTP unit!\n");
 
     initialize_signal_handler();
     initialize_random_seed();

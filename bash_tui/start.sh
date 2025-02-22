@@ -2,9 +2,9 @@
 
 . ./exe_name.sh
 
-app_title="Untitled TFTP App"
-client_title="Untitled TFTP Client"
-server_title="Untitled TFTP Server"
+app_title="stftpu"
+client_title="stftpu Client"
+server_title="stftpu Server"
 
 read_tag="read"
 write_tag="write"
