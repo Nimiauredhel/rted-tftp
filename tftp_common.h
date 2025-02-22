@@ -1,3 +1,6 @@
+/**
+ * The TFTP-Common header declares data and functionality used by both TFTP client and server operations.
+ */
 
 #ifndef TFTP_COMMON_H
 #define TFTP_COMMON_H
@@ -101,6 +104,10 @@ typedef enum OperationId
 
 } OperationId_t;
 
+/**
+ * This struct holds data that helps filter initial user input,
+ * and provide usage instructions if the input is invalid.
+ */
 typedef struct OperationMode
 {
     const uint8_t min_argument_count;
@@ -110,6 +117,9 @@ typedef struct OperationMode
 
 } OperationMode_t;
 
+/**
+ * This struct holds data defining TFTP operations.
+ */
 typedef struct OperationData
 {
     OperationId_t operation_id;
@@ -124,6 +134,11 @@ typedef struct OperationData
     char path[];
 } OperationData_t;
 
+/**
+ * This struct holds data used during TFTP file transfer operations.
+ * It is separate from the Operation Data struct since not every operation involves a file transfer,
+ * and some that potentially do may be aborted before it occurs.
+ */
 typedef struct TransferData
 {
     uint8_t resend_counter;
@@ -140,6 +155,9 @@ typedef struct TransferData
     Packet_t *data_packet_ptr;
 } TransferData_t;
 
+/**
+ * This struct holds common data used by both TFTP client and server operations.
+ */
 typedef struct TFTPCommonData
 {
     bool is_server;

@@ -1,5 +1,10 @@
 #include "server.h"
 
+/**
+ * This function ensures the existence of a server-side storage location,
+ * either by creating it or by validating its prior existence.
+ * It returns false if it somehow cannot be ensured, e.g. lacking permissions.
+ */
 static bool server_init_storage_location(void)
 {
     if (mkdir(SERVER_STORAGE_PATH, 0777) == 0)
@@ -22,6 +27,10 @@ static bool server_init_storage_location(void)
     return true;
 }
 
+/**
+ * This function implements a server-side client-requested file deletion operation,
+ * implemented in the server file since it is a uniquely assymetrical operation.
+ */
 static bool server_delete_file(OperationData_t *op_data)
 {
     // acknowledge request
@@ -52,6 +61,11 @@ static bool server_delete_file(OperationData_t *op_data)
     return true;
 }
 
+/**
+ * This function attempts to acquire a server connection slot,
+ * locking it down and returning it to the caller for exclusive use.
+ * It returns -1 if no free slots are available.
+ */
 static int server_acquire_connection_slot(ServerSlots_t *data)
 {
     int retval = -1;
@@ -75,6 +89,10 @@ static int server_acquire_connection_slot(ServerSlots_t *data)
     return retval;
 }
 
+/**
+ * This function releases a server connection slot,
+ * allowing it to be used by a future operation.
+ */
 static void server_release_connection_slot(ServerSlots_t *data, int slot_index)
 {
     printf("[Slot #%d] Releasing connection slot...\n", slot_index);
@@ -84,6 +102,11 @@ static void server_release_connection_slot(ServerSlots_t *data, int slot_index)
     pthread_mutex_unlock(&data->slots_mutex);
 }
 
+/**
+ * This function is called by an operation thread when it is about to terminate.
+ * At this point, any operation or file transfer data structs have already been freed;
+ * this only frees the thread args struct, releases the connection slot, and detaches the thread.
+ */
 static void server_task_release(ServerTaskArgs_t *task_args)
 {
     printf("[Slot #%d] Terminating thread...\n", task_args->task_slot_idx);
@@ -92,6 +115,11 @@ static void server_task_release(ServerTaskArgs_t *task_args)
     free(task_args);
 }
 
+/**
+ * This function implements an ephemeral server operation thread,
+ * which interfaces with the common TFTP functions to handle an entire client-requested operation,
+ * and subsequently cleans up its own data and releases its own server slot.
+ */
 static void* server_task_start(void *args)
 {
     ServerTaskArgs_t *task_args = (ServerTaskArgs_t *)args;
@@ -149,6 +177,11 @@ static void* server_task_start(void *args)
     pthread_exit(NULL);
 }
 
+/**
+ * Parses a received packet buffer into its individual fields
+ * which are then passed to tftp_init_operation_data() to eventually
+ * return a usable OperationData_t structure.
+ */
 static OperationData_t* server_parse_request_data(ServerListenerData_t *data)
 {
     char file_path[TFTP_FILENAME_MAX * 2] = SERVER_STORAGE_PATH;
@@ -197,6 +230,11 @@ static OperationData_t* server_parse_request_data(ServerListenerData_t *data)
     return tftp_init_operation_data(op_id, data->client_address, file_path, mode_string, blksize_octets_string);
 }
 
+/**
+ * Initializes the data structure used by the listener thread
+ * temporary incoming data before it is processed further,
+ * as well as the handle for the requests socket.
+ */
 static bool server_init_listener_data(ServerListenerData_t *data)
 {
     static const int reuse_flag = 1;
@@ -257,6 +295,10 @@ static void server_deinit_listener_data(ServerListenerData_t *data)
     explicit_bzero(data, sizeof(ServerListenerData_t));
 }
 
+/**
+ * Initializes the data structure responsible for
+ * tracking all concurrent server operations.
+ */
 static void server_init_slots_data(ServerSlots_t *data)
 {
     // initialize client slots data
@@ -278,6 +320,13 @@ static void server_deinit_slots_data(ServerSlots_t *data)
     explicit_bzero(data, sizeof(ServerSlots_t));
 }
 
+/**
+ * This function is called by the listener thread,
+ * and handles an incoming request in three stages:
+ * 1. Attempts to acquire a free connection slot.
+ * 2. Parses the request into an OperationData_t structure.
+ * 3. Creates a new operation thread to handle the actual operation.
+ */
 static void server_try_create_operation_thread(ServerListenerData_t *listener, ServerSlots_t *slots)
 {
     int acquired_slot_idx = server_acquire_connection_slot(slots);
@@ -314,6 +363,12 @@ static void server_try_create_operation_thread(ServerListenerData_t *listener, S
     }
 }
 
+/**
+ * The listener loop function awaits request packets at the TFTP requests port 69.
+ * Valid request packets are parsed, assigned a server slot, and handed to a new operation thread.
+ * Invalid packets are answered with an error packet and dismissed.
+ * The "should_terminate" flag may be set by an OS termination signal to allow graceful termination.
+ */
 static void server_listener_loop(ServerListenerData_t *listener, ServerSlots_t *slots)
 {
     static const char *received_packet_message_format = "Received %s packet in requests socket.\n";
@@ -370,6 +425,9 @@ static void server_listener_loop(ServerListenerData_t *listener, ServerSlots_t *
     printf("\nServer listener loop terminated.\n");
 }
 
+/**
+ * Initializes and allocates server state data.
+ */
 static ServerData_t* server_init_data(void)
 {
     ServerData_t *data = malloc(sizeof(ServerData_t));;
@@ -387,6 +445,11 @@ static ServerData_t* server_init_data(void)
     return data;
 }
 
+/**
+ * Entry point for the TFTP server.
+ * Initializes the server state and launches the listener loop function.
+ * When the listener loop function returns, it cleans up the server data and returns to main.
+ */
 void server_start(void)
 {
     ServerData_t *data = server_init_data();

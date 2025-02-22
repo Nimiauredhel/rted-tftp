@@ -1,7 +1,9 @@
 #include "tftp_common.h"
 
-// This macro checks for a user termination signal at multiple points during file transfer,
-// to ensure a timely response to user input without adding too much clutter.
+/**
+ * This macro is used to check for a user termination signal at multiple points during file transfer,
+ * to ensure a timely response to user input without adding too much clutter.
+ */
 #define CHECK_SIGTERM_DURING_TRANSFER \
         if (should_terminate) { \
         printf("User requested termination - aborting.\n"); \
@@ -10,8 +12,10 @@
         NULL, op_data->data_socket, &op_data->peer_address, op_data->peer_address_length); \
         return false; } \
 
-// This struct holds data common to all client and server operations;
-// the 'is_server' flag is the only non-const field, as it relies on input args.
+/**
+ * This struct holds data common to TFTP client and server operations.
+ * The 'is_server' flag is the only non-const field, as it relies on user input.
+ */
 TFTPCommonData_t tftp_common =
 {
     .is_server = false,
@@ -41,6 +45,9 @@ TFTPCommonData_t tftp_common =
     },
 };
 
+/**
+ * Converts the input address and port to an IPv4 socket address struct.
+ */
 struct sockaddr_in init_peer_socket_address(struct in_addr peer_address_bin, in_port_t peer_port_bin)
 {
     struct sockaddr_in socket_address =
@@ -53,6 +60,10 @@ struct sockaddr_in init_peer_socket_address(struct in_addr peer_address_bin, in_
     return socket_address;
 }
 
+/**
+ * initializes a socket for TFTP data operations, binds it to a random ephemeral port,
+ * and sets some convenient flags for consistent operation.
+ */
 void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr)
 {
     static const int reuse_flag = 1;
@@ -106,6 +117,10 @@ void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_pt
     printf("Created data socket and randomly bound to port %u.\n", rx_port);
 }
 
+/**
+ * This function allocates and initializes an OperationData_t struct which is used to define all TFTP operations,
+ * whether they eventually involve a file transfer or not.
+ */
 OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockaddr_in peer_address, char *filename, char *mode_string, char *blocksize_string)
 {
     bool is_delete = false;
@@ -235,6 +250,9 @@ OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockad
     return data;
 }
 
+/**
+ * Frees an operation data struct after a TFTP operation has been either completed or aborted.
+ */
 void tftp_free_operation_data(OperationData_t *data)
 {
     printf("Deallocating '%s' operation data.\n", data->request_description);
@@ -247,6 +265,10 @@ void tftp_free_operation_data(OperationData_t *data)
     free(data);
 }
 
+/**
+ * This function initializes a TransferData_t struct which is used during file transfers.
+ * The same structure is used to handle both transmission and reception.
+ */
 bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *transfer_data, bool receiver)
 {
     // TODO: null check input pointers
@@ -314,6 +336,9 @@ bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *tr
     return true;
 }
 
+/**
+ * Frees a TransferData_t struct after a file transfer operation was either completed or aborted.
+ */
 void tftp_free_transfer_data(TransferData_t *data)
 {
     printf("Deallocating transfer data.\n");
@@ -329,6 +354,10 @@ void tftp_free_transfer_data(TransferData_t *data)
     free(data);
 }
 
+/**
+ * This function implements the core of a file transfer operation,
+ * from the transmitting side.
+ */
 bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
 {
     CHECK_SIGTERM_DURING_TRANSFER
@@ -447,6 +476,10 @@ bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
     return true;
 }
 
+/**
+ * This function implements the core of a file transfer operation,
+ * from the receiving side.
+ */
 bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
 {
     CHECK_SIGTERM_DURING_TRANSFER
@@ -517,6 +550,11 @@ bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
     return true;
 }
 
+/**
+ * This function sends an acknowledgement packet to the specified peer.
+ * It does NOT handle receiving a response.
+ * The return value is only false if an error prevented packet transmission.
+ */
 bool tftp_send_ack(uint16_t block_number, int socket, const struct sockaddr_in *peer_address_ptr, socklen_t peer_address_length)
 {
     printf("Sending ACK with block number %u.\n", block_number);
@@ -531,6 +569,9 @@ bool tftp_send_ack(uint16_t block_number, int socket, const struct sockaddr_in *
     return true;
 }
 
+/**
+ * This function sends an error packet to the specified peer.
+ */
 void tftp_send_error(TFTPErrorCode_t error_code, const char *error_message, const char *error_item, int data_socket, const struct sockaddr_in *peer_address_ptr, socklen_t peer_address_length)
 {
     if (peer_address_ptr->sin_port == htons(69))
@@ -569,6 +610,11 @@ void tftp_send_error(TFTPErrorCode_t error_code, const char *error_message, cons
     free(error_packet);
 }
 
+/**
+ * This function handles reception of an ACK packet at the operation's given DATA socket.
+ * It returns true if the expected packet with the correct block number has been received.
+ * It returns false if the retry count has been exceeded, or if it receives an error packet.
+ */
 bool tftp_await_acknowledgement(uint16_t block_number, OperationData_t *op_data)
 {
     uint8_t retry_counter = 0;

@@ -8,6 +8,10 @@ static int8_t get_selection_from_args(int argc, char *argv[]);
 static void print_usage(const char* process_name);
 static void exit_bad_input(char *process_name);
 
+/**
+ * The main file initializes some common functionality and parses the input arguments.
+ * Control is then passed to either the client or server file, where the actual operations are implemented.
+ */
 int main(int argc, char *argv[])
 {
     printf("Welcome to Untitled TFTP App!\n");
