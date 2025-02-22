@@ -87,6 +87,11 @@ int main(int argc, char *argv[])
     return EXIT_SUCCESS;
 }
 
+/**
+ * Parses the input arguments to determine whether they form a valid selection.
+ * If valid, returns an index associated with the user selected operation mode.
+ * If invalid, returns -1.
+ */
 static int8_t get_selection_from_args(int argc, char *argv[])
 {
     int8_t selection = -1;
@@ -117,6 +122,9 @@ static int8_t get_selection_from_args(int argc, char *argv[])
     return selection;
 }
 
+/**
+ * Prints usage instructions for this program's CLI.
+ */
 static void print_usage(const char* process_name)
 {
     printf(" Usage:\n ([] means optional)\n");
@@ -129,6 +137,9 @@ static void print_usage(const char* process_name)
     }
 }
 
+/**
+ * Handles invalid user input by printing usage instructions and terminating.
+ */
 static void exit_bad_input(char *process_name)
 {
     printf("Invalid input!");
