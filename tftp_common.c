@@ -16,8 +16,6 @@ TFTPCommonData_t tftp_common =
 {
     .is_server = false,
     .max_retry_count = 5,
-    .data_timeout = 100000,
-    .response_timeout = 1000000,
     .operation_modes =
     {
         { 2, "serve", "Serve storage folder to clients", "%s %s" },
@@ -43,100 +41,6 @@ TFTPCommonData_t tftp_common =
     },
 };
 
-void tftp_free_transfer_data(TransferData_t *data)
-{
-    printf("Deallocating transfer data.\n");
-
-    if (data->file != NULL)
-    {
-        fclose(data->file);
-    }
-
-    if (data->data_packet_ptr != NULL) free(data->data_packet_ptr);
-    if (data->response_packet_ptr != NULL) free(data->response_packet_ptr);
-
-    free(data);
-}
-
-void tftp_free_operation_data(OperationData_t *data)
-{
-    printf("Deallocating '%s' operation data.\n", data->request_description);
-
-    if (data->data_socket > 0)
-    {
-        close(data->data_socket);
-    }
-
-    free(data);
-}
-
-bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *transfer_data, bool receiver)
-{
-    // TODO: null check input pointers
-    explicit_bzero(transfer_data, sizeof(TransferData_t));
-
-    if (receiver)
-    {
-        transfer_data->file = fopen(operation_data->path, "rb");
-
-        if (transfer_data->file != NULL)
-        {
-            char timestamp[32];
-            struct stat file_attr;
-            stat(operation_data->path, &file_attr);
-
-            struct tm tm;
-            localtime_r(&file_attr.st_ctim.tv_sec, &tm);
-            strftime(timestamp, 32, "%Y-%m-%d %H:%M:%S.", &tm);
-
-            printf("File already exists since %s. Aborting receive operation.\n", timestamp);
-            tftp_send_error(operation_data->data_socket, "File already exists! To overwrite, request deletion then try again. Creation date: ", timestamp, operation_data->data_socket, &operation_data->peer_address, operation_data->peer_address_length);
-            return false;
-        }
-    }
-
-    printf("%s file: '%s'\n", receiver ? "Creating" : "Opening", operation_data->path);
-    transfer_data->file = fopen(operation_data->path, receiver ? "wb" : "rb");
-
-    if (transfer_data->file == NULL)
-    {
-        perror("Failed to acquire file descriptor");
-        tftp_send_error(TFTP_ERROR_UNDEFINED, "Failed to acquire file descriptor, details: ", strerror(errno), operation_data->data_socket, &operation_data->peer_address, operation_data->peer_address_length);
-        return false;
-    }
-
-    if (operation_data->block_size == 0)
-    {
-        operation_data->block_size = TFTP_BLKSIZE_DEFAULT;
-        printf("Block size unspecified, defaulting to %d bytes.\n", TFTP_BLKSIZE_DEFAULT);
-    }
-    else if (operation_data->block_size < TFTP_BLKSIZE_MIN || operation_data->block_size > TFTP_BLKSIZE_MAX)
-    {
-        printf("Invalid block size specified");
-        tftp_send_error(TFTP_ERROR_ILLEGAL_OPERATION, "Invalid block size specified", NULL, operation_data->data_socket, &operation_data->peer_address, operation_data->peer_address_length);
-        return false;
-    }
-    else
-    {
-        printf("Specified block size: %d bytes.\n", operation_data->block_size);
-    }
-
-    transfer_data->data_packet_max_size = sizeof(Packet_t) + operation_data->block_size;
-    transfer_data->response_packet_max_size = sizeof(Packet_t) + 32;
-
-    transfer_data->data_packet_ptr = malloc(transfer_data->data_packet_max_size);
-    transfer_data->response_packet_ptr = malloc(transfer_data->response_packet_max_size);
-
-    if (transfer_data->data_packet_ptr == NULL || transfer_data->response_packet_ptr == NULL)
-    {
-        perror("Failed to allocate packet buffers");
-        tftp_send_error(TFTP_ERROR_OUT_OF_SPACE, "Failed to allocate packet buffers: ", strerror(errno), operation_data->data_socket, &operation_data->peer_address, operation_data->peer_address_length);
-        return false;
-    }
-
-    return true;
-}
-
 struct sockaddr_in init_peer_socket_address(struct in_addr peer_address_bin, in_port_t peer_port_bin)
 {
     struct sockaddr_in socket_address =
@@ -147,6 +51,59 @@ struct sockaddr_in init_peer_socket_address(struct in_addr peer_address_bin, in_
     };
 
     return socket_address;
+}
+
+void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr)
+{
+    static const int reuse_flag = 1;
+    static const struct timeval socket_timeout = { .tv_sec = 1, .tv_usec = 0 };
+
+    *socket_ptr = socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (*socket_ptr < 0)
+    {
+        perror("Failed to create data socket");
+        exit(EXIT_FAILURE);
+    }
+
+    if(0 > setsockopt(*socket_ptr, SOL_SOCKET, SO_REUSEADDR,  &reuse_flag, sizeof(reuse_flag)))
+    {
+        perror("Failed to set socket 'reuse address' option");
+        exit(EXIT_FAILURE);
+    }
+
+    if(0 > setsockopt(*socket_ptr, SOL_SOCKET, SO_REUSEPORT,  &reuse_flag, sizeof(reuse_flag)))
+    {
+        perror("Failed to set socket 'reuse port' option");
+        exit(EXIT_FAILURE);
+    }
+
+    if(0 > setsockopt(*socket_ptr, SOL_SOCKET, SO_RCVTIMEO,  &socket_timeout, sizeof(socket_timeout)))
+    {
+        perror("Failed to set socket timeout");
+        exit(EXIT_FAILURE);
+    }
+
+    uint16_t rx_port;
+    int bind_result = -1;
+
+    while (bind_result < 0)
+    {
+        rx_port = random_range(tftp_common.is_server ? SERVER_DATA_PORT_MIN : CLIENT_DATA_PORT_MIN,
+                tftp_common.is_server ? SERVER_DATA_PORT_MAX : CLIENT_DATA_PORT_MAX);
+        address_ptr->sin_port = htons(rx_port);
+        bind_result = bind(*socket_ptr,
+                (struct sockaddr*)address_ptr,
+                sizeof(*address_ptr));
+    }
+
+    if (bind_result < 0)
+    {
+        perror("Somehow failed to bind to an ephemeral socket");
+        exit(EXIT_FAILURE);
+    }
+
+    printf("Created data socket and randomly bound to port %u.\n", rx_port);
 }
 
 OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockaddr_in peer_address, char *filename, char *mode_string, char *blocksize_string)
@@ -278,152 +235,98 @@ OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockad
     return data;
 }
 
-void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr)
+void tftp_free_operation_data(OperationData_t *data)
 {
-    static const int reuse_flag = 1;
-    static const struct timeval socket_timeout = { .tv_sec = 1, .tv_usec = 0 };
+    printf("Deallocating '%s' operation data.\n", data->request_description);
 
-    *socket_ptr = socket(AF_INET, SOCK_DGRAM, 0);
-
-    if (*socket_ptr < 0)
+    if (data->data_socket > 0)
     {
-        perror("Failed to create data socket");
-        exit(EXIT_FAILURE);
+        close(data->data_socket);
     }
 
-    if(0 > setsockopt(*socket_ptr, SOL_SOCKET, SO_REUSEADDR,  &reuse_flag, sizeof(reuse_flag)))
-    {
-        perror("Failed to set socket 'reuse address' option");
-        exit(EXIT_FAILURE);
-    }
-
-    if(0 > setsockopt(*socket_ptr, SOL_SOCKET, SO_REUSEPORT,  &reuse_flag, sizeof(reuse_flag)))
-    {
-        perror("Failed to set socket 'reuse port' option");
-        exit(EXIT_FAILURE);
-    }
-
-    if(0 > setsockopt(*socket_ptr, SOL_SOCKET, SO_RCVTIMEO,  &socket_timeout, sizeof(socket_timeout)))
-    {
-        perror("Failed to set socket timeout");
-        exit(EXIT_FAILURE);
-    }
-
-    uint16_t rx_port;
-    int bind_result = -1;
-
-    while (bind_result < 0)
-    {
-        rx_port = random_range(tftp_common.is_server ? SERVER_DATA_PORT_MIN : CLIENT_DATA_PORT_MIN,
-                tftp_common.is_server ? SERVER_DATA_PORT_MAX : CLIENT_DATA_PORT_MAX);
-        address_ptr->sin_port = htons(rx_port);
-        bind_result = bind(*socket_ptr,
-                (struct sockaddr*)address_ptr,
-                sizeof(*address_ptr));
-    }
-
-    if (bind_result < 0)
-    {
-        perror("Somehow failed to bind to an ephemeral socket");
-        exit(EXIT_FAILURE);
-    }
-
-    printf("Created data socket and randomly bound to port %u.\n", rx_port);
+    free(data);
 }
 
-bool tftp_send_ack(uint16_t block_number, int socket, const struct sockaddr_in *peer_address_ptr, socklen_t peer_address_length)
+bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *transfer_data, bool receiver)
 {
-    printf("Sending ACK with block number %u.\n", block_number);
-    Packet_t ack_packet = { .ack.opcode = htons(TFTP_ACK), .ack.block_number = htons(block_number) };
+    // TODO: null check input pointers
+    explicit_bzero(transfer_data, sizeof(TransferData_t));
 
-    if (0 > sendto(socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)peer_address_ptr, peer_address_length))
+    if (receiver)
     {
-        perror("Failed to send ack");
+        transfer_data->file = fopen(operation_data->path, "rb");
+
+        if (transfer_data->file != NULL)
+        {
+            char timestamp[32];
+            struct stat file_attr;
+            stat(operation_data->path, &file_attr);
+
+            struct tm tm;
+            localtime_r(&file_attr.st_ctim.tv_sec, &tm);
+            strftime(timestamp, 32, "%Y-%m-%d %H:%M:%S.", &tm);
+
+            printf("File already exists since %s. Aborting receive operation.\n", timestamp);
+            tftp_send_error(operation_data->data_socket, "File already exists! To overwrite, request deletion then try again. Creation date: ", timestamp, operation_data->data_socket, &operation_data->peer_address, operation_data->peer_address_length);
+            return false;
+        }
+    }
+
+    printf("%s file: '%s'\n", receiver ? "Creating" : "Opening", operation_data->path);
+    transfer_data->file = fopen(operation_data->path, receiver ? "wb" : "rb");
+
+    if (transfer_data->file == NULL)
+    {
+        perror("Failed to acquire file descriptor");
+        tftp_send_error(TFTP_ERROR_UNDEFINED, "Failed to acquire file descriptor, details: ", strerror(errno), operation_data->data_socket, &operation_data->peer_address, operation_data->peer_address_length);
+        return false;
+    }
+
+    if (operation_data->block_size == 0)
+    {
+        operation_data->block_size = TFTP_BLKSIZE_DEFAULT;
+        printf("Block size unspecified, defaulting to %d bytes.\n", TFTP_BLKSIZE_DEFAULT);
+    }
+    else if (operation_data->block_size < TFTP_BLKSIZE_MIN || operation_data->block_size > TFTP_BLKSIZE_MAX)
+    {
+        printf("Invalid block size specified");
+        tftp_send_error(TFTP_ERROR_ILLEGAL_OPERATION, "Invalid block size specified", NULL, operation_data->data_socket, &operation_data->peer_address, operation_data->peer_address_length);
+        return false;
+    }
+    else
+    {
+        printf("Specified block size: %d bytes.\n", operation_data->block_size);
+    }
+
+    transfer_data->data_packet_max_size = sizeof(Packet_t) + operation_data->block_size;
+    transfer_data->response_packet_max_size = sizeof(Packet_t) + 32;
+
+    transfer_data->data_packet_ptr = malloc(transfer_data->data_packet_max_size);
+    transfer_data->response_packet_ptr = malloc(transfer_data->response_packet_max_size);
+
+    if (transfer_data->data_packet_ptr == NULL || transfer_data->response_packet_ptr == NULL)
+    {
+        perror("Failed to allocate packet buffers");
+        tftp_send_error(TFTP_ERROR_OUT_OF_SPACE, "Failed to allocate packet buffers: ", strerror(errno), operation_data->data_socket, &operation_data->peer_address, operation_data->peer_address_length);
         return false;
     }
 
     return true;
 }
 
-void tftp_send_error(TFTPErrorCode_t error_code, const char *error_message, const char *error_item, int data_socket, const struct sockaddr_in *peer_address_ptr, socklen_t peer_address_length)
+void tftp_free_transfer_data(TransferData_t *data)
 {
-    if (peer_address_ptr->sin_port == htons(69))
+    printf("Deallocating transfer data.\n");
+
+    if (data->file != NULL)
     {
-        printf("Errors during request phase not forwarded to peer (no peer yet).\n");
-        return;
+        fclose(data->file);
     }
 
-    size_t error_message_len = (error_message == NULL ? 0 : strlen(error_message) + (error_item == NULL ? 0 : strlen(error_item)));
-    size_t packet_size = sizeof(Packet_t) + error_message_len + 2;
-    Packet_t *error_packet = malloc(packet_size);
-    explicit_bzero(error_packet, packet_size);
+    if (data->data_packet_ptr != NULL) free(data->data_packet_ptr);
+    if (data->response_packet_ptr != NULL) free(data->response_packet_ptr);
 
-    error_packet->opcode = htons(TFTP_ERROR);
-    error_packet->error.error_code = htons(error_code);
-
-    if (error_message != NULL)
-    {
-        strcpy(error_packet->error.error_message, error_message);
-    }
-
-    if (error_item != NULL)
-    {
-        strcat(error_packet->error.error_message, error_item);
-    }
-
-    printf("Sending error packet with code %d, message: %s%s\n", error_code, error_message, error_item);
-
-    ssize_t bytes_sent = sendto(data_socket, error_packet, packet_size, 0, (struct sockaddr *)peer_address_ptr, peer_address_length);
-
-    if (bytes_sent <= 0)
-    {
-        perror("Failed to send error");
-    }
-
-    free(error_packet);
-}
-
-bool tftp_await_acknowledgement(uint16_t block_number, OperationData_t *op_data)
-{
-    uint8_t retry_counter = 0;
-    ssize_t bytes_received = 0;
-    TFTPOpcode_t incoming_opcode;
-
-    // dynamically allocating the packet to allow extra space for error packet message field
-    Packet_t *incoming_packet = malloc(TFTP_RESPONSE_PACKET_MAX_SIZE);
-
-    while (retry_counter < tftp_common.max_retry_count)
-    {
-        retry_counter++;
-        printf("Awaiting ACK packet (attempt #%d).\n", retry_counter);
-        bytes_received = recvfrom(op_data->data_socket, incoming_packet, TFTP_RESPONSE_PACKET_MAX_SIZE, 0, (struct sockaddr *)&(op_data->peer_address), &(op_data->peer_address_length));
-
-        if (bytes_received > 0)
-        {
-            incoming_opcode = ntohs(incoming_packet->opcode);
-
-            if (incoming_opcode == TFTP_ACK && ntohs(incoming_packet->ack.block_number) == block_number)
-            {
-                free(incoming_packet);
-                return true;
-            }
-            else if (incoming_opcode == TFTP_ERROR)
-            {
-                printf("Received error message (code %u) from peer with message: %s\n", ntohs(incoming_packet->error.error_code), incoming_packet->error.error_message);
-                free(incoming_packet);
-                return false;
-            }
-            else
-            {
-                printf("Received packet with opcode %d, expected %d (ACK) or %d (ERROR)!\n", incoming_opcode, TFTP_ACK, TFTP_ERROR);
-            }
-        }
-    }
-
-    printf("ACK reception retry limit (%u) reached.\n", tftp_common.max_retry_count);
-
-    free(incoming_packet);
-    return false;
+    free(data);
 }
 
 bool tftp_transmit_file(OperationData_t *op_data, TransferData_t *tx_data)
@@ -612,4 +515,99 @@ bool tftp_receive_file(OperationData_t *op_data, TransferData_t *tx_data)
 
     printf("File reception complete in %0.2fs.\n", seconds_since_clock(tx_data->start_clock));
     return true;
+}
+
+bool tftp_send_ack(uint16_t block_number, int socket, const struct sockaddr_in *peer_address_ptr, socklen_t peer_address_length)
+{
+    printf("Sending ACK with block number %u.\n", block_number);
+    Packet_t ack_packet = { .ack.opcode = htons(TFTP_ACK), .ack.block_number = htons(block_number) };
+
+    if (0 > sendto(socket, &ack_packet, sizeof(ack_packet), 0, (struct sockaddr *)peer_address_ptr, peer_address_length))
+    {
+        perror("Failed to send ack");
+        return false;
+    }
+
+    return true;
+}
+
+void tftp_send_error(TFTPErrorCode_t error_code, const char *error_message, const char *error_item, int data_socket, const struct sockaddr_in *peer_address_ptr, socklen_t peer_address_length)
+{
+    if (peer_address_ptr->sin_port == htons(69))
+    {
+        printf("Errors during request phase not forwarded to peer (no peer yet).\n");
+        return;
+    }
+
+    size_t error_message_len = (error_message == NULL ? 0 : strlen(error_message) + (error_item == NULL ? 0 : strlen(error_item)));
+    size_t packet_size = sizeof(Packet_t) + error_message_len + 2;
+    Packet_t *error_packet = malloc(packet_size);
+    explicit_bzero(error_packet, packet_size);
+
+    error_packet->opcode = htons(TFTP_ERROR);
+    error_packet->error.error_code = htons(error_code);
+
+    if (error_message != NULL)
+    {
+        strcpy(error_packet->error.error_message, error_message);
+    }
+
+    if (error_item != NULL)
+    {
+        strcat(error_packet->error.error_message, error_item);
+    }
+
+    printf("Sending error packet with code %d, message: %s%s\n", error_code, error_message, error_item);
+
+    ssize_t bytes_sent = sendto(data_socket, error_packet, packet_size, 0, (struct sockaddr *)peer_address_ptr, peer_address_length);
+
+    if (bytes_sent <= 0)
+    {
+        perror("Failed to send error");
+    }
+
+    free(error_packet);
+}
+
+bool tftp_await_acknowledgement(uint16_t block_number, OperationData_t *op_data)
+{
+    uint8_t retry_counter = 0;
+    ssize_t bytes_received = 0;
+    TFTPOpcode_t incoming_opcode;
+
+    // dynamically allocating the packet to allow extra space for error packet message field
+    Packet_t *incoming_packet = malloc(TFTP_RESPONSE_PACKET_MAX_SIZE);
+
+    while (retry_counter < tftp_common.max_retry_count)
+    {
+        retry_counter++;
+        printf("Awaiting ACK packet (attempt #%d).\n", retry_counter);
+        bytes_received = recvfrom(op_data->data_socket, incoming_packet, TFTP_RESPONSE_PACKET_MAX_SIZE, 0, (struct sockaddr *)&(op_data->peer_address), &(op_data->peer_address_length));
+
+        if (bytes_received > 0)
+        {
+            incoming_opcode = ntohs(incoming_packet->opcode);
+
+            if (incoming_opcode == TFTP_ACK && ntohs(incoming_packet->ack.block_number) == block_number)
+            {
+                free(incoming_packet);
+                return true;
+            }
+            else if (incoming_opcode == TFTP_ERROR)
+            {
+                printf("Received error message (code %u) from peer with message: %s\n", ntohs(incoming_packet->error.error_code), incoming_packet->error.error_message);
+                free(incoming_packet);
+                return false;
+            }
+            else
+            {
+                printf("Received packet with opcode %d, expected %d (ACK) or %d (ERROR)!\n", incoming_opcode, TFTP_ACK, TFTP_ERROR);
+            }
+        }
+    }
+
+    printf("ACK reception retry limit (%u) reached.\n", tftp_common.max_retry_count);
+
+    free(incoming_packet);
+    return false;
 }

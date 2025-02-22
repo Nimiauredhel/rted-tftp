@@ -144,8 +144,6 @@ typedef struct TFTPCommonData
 {
     bool is_server;
     const uint8_t max_retry_count;
-    const uint32_t data_timeout;
-    const uint32_t response_timeout;
     const OperationMode_t operation_modes[TFTP_OPERATION_MODES_COUNT];
     const char transfer_mode_strings[TFTP_TRANSFER_MODES_COUNT][TFTP_TRANSFER_MODE_STRING_MAXLENGTH];
     const char opcode_strings[TFTP_OPCODES_COUNT][TFTP_OPCODE_STRING_MAXLENGTH];
@@ -153,16 +151,19 @@ typedef struct TFTPCommonData
 
 extern TFTPCommonData_t tftp_common;
 
+struct sockaddr_in init_peer_socket_address(struct in_addr peer_address_bin, in_port_t peer_port_bin);
+void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr);
+
+OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockaddr_in peer_address, char *filename, char *mode_string, char *blocksize_string);
+void tftp_free_operation_data(OperationData_t *data);
+
 bool tftp_fill_transfer_data(OperationData_t *operation_data, TransferData_t *transfer_data, bool receiver);
 void tftp_free_transfer_data(TransferData_t *data);
-void tftp_free_operation_data(OperationData_t *data);
+
 bool tftp_transmit_file(OperationData_t *operation_data, TransferData_t *transfer_data);
 bool tftp_receive_file(OperationData_t *operation_data, TransferData_t *transfer_data);
 bool tftp_await_acknowledgement(uint16_t block_number, OperationData_t *op_data);
 bool tftp_send_ack(uint16_t block_number, int socket, const struct sockaddr_in *peer_address_ptr, socklen_t peer_address_length);
 void tftp_send_error(TFTPErrorCode_t error_code, const char *error_message, const char *error_item, int data_socket, const struct sockaddr_in *peer_address_ptr, socklen_t peer_address_length);
-struct sockaddr_in init_peer_socket_address(struct in_addr peer_address_bin, in_port_t peer_port_bin);
-OperationData_t *tftp_init_operation_data(OperationId_t operation, struct sockaddr_in peer_address, char *filename, char *mode_string, char *blocksize_string);
-void tftp_init_bound_data_socket(int *socket_ptr, struct sockaddr_in *address_ptr);
 
 #endif

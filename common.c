@@ -16,6 +16,7 @@ void initialize_signal_handler(void)
     sigaction(SIGHUP, &action, NULL);
 }
 
+// calling random_range once to ensure that random is seeded
 void initialize_random_seed(void)
 {
     usleep(random_range(1234, 5678));
