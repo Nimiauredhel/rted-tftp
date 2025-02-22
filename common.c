@@ -1,9 +1,20 @@
 #include "common.h"
 
+/**
+ * Global flag set by OS termination signals
+ * and polled by functions to allow graceful termination.
+ */
 bool should_terminate = false;
 
+/**
+ * The random_range() function uses this to determine
+ * whether rand() was already seeded or not.
+ */
 static bool random_was_seeded = false;
 
+/**
+ * Hooks up OS signals to our custom handler.
+ */
 void initialize_signal_handler(void)
 {
     should_terminate = false;
@@ -22,6 +33,11 @@ void initialize_random_seed(void)
     usleep(random_range(1234, 5678));
 }
 
+/**
+ * Handles selected OS signals.
+ * Termination signals are caught to set the should_terminate flag
+ * which signals running functions that they should attempt graceful termination.
+ */
 void signal_handler(int signum)
 {
     switch (signum)
@@ -34,6 +50,11 @@ void signal_handler(int signum)
     }
 }
 
+/**
+ * Returns a random int between min and max.
+ * Wow, I actually bothered writing this.
+ * Anyway, it also checks if rand() was already seeded.
+ */
 int random_range(int min, int max)
 {
     if (!random_was_seeded)
@@ -47,6 +68,10 @@ int random_range(int min, int max)
     return random_number;
 }
 
+/**
+ * Returns the seconds elapsed since a given clock value.
+ * Used for timing operations!
+ */
 float seconds_since_clock(struct timespec start_clock)
 {
     struct timespec now_clock;

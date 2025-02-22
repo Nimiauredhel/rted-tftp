@@ -18,6 +18,10 @@
 #include <signal.h>
 #include <pthread.h>
 
+/**
+ * Global flag set by OS termination signals
+ * and polled by functions to allow graceful termination.
+ */
 extern bool should_terminate;
 
 void initialize_signal_handler(void);
